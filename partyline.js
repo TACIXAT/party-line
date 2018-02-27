@@ -23,6 +23,21 @@ var stdin = process.openStdin();
 // peer {ip: '6.6.6.6', port: 0x1337}
 var peers = [];
 
+function addPeer(ip, port) {
+    var filtered = peers.filter(function(ea) {
+        return ea['ip'] == ip && ea['port'] == port;
+    });
+
+    if(filtered.length > 0) {
+        return;
+    }
+
+    var peer = {ip: ip, port: port};
+
+    console.log('added peer', peer);
+    peers.push(peer);
+}
+
 function bootstrap(toks) {
     if(toks.length < 2) {
         return false;
@@ -46,7 +61,7 @@ function bootstrap(toks) {
     }).join('.');
 
     var port = parseInt(portEnc, 16);
-    peers.push({ip: ip, port: port});
+    addPeer(ip, port);
     return true;
 }
 
@@ -73,6 +88,7 @@ function serverInit() {
     socket.on('message', (msg, rinfo) => {
         console.log(`server got: ${msg} from ${rinfo.address}:${rinfo.port}`);
         // handle external message
+        addPeer(rinfo.address, rinfo.port);
     });
 
     socket.on('listening', () => {
@@ -128,17 +144,12 @@ function getIP() {
 
 function map(results) {
     // find unused port
-    var udpResults = results.reduce(function(acc, ea) { 
-        if(ea['protocol'] === 'udp')
-            return acc + ea;
-        return acc;
+    var udpResults = results.slice(0,20).filter(function(ea) { 
+        return ea['protocol'] === 'udp';
     });
 
-    var localResults = results.reduce(function(acc, ea) {
-        if(ea['private']['host'] === globalConfig['int']['ip']) {
-            return acc + ea;
-        }
-        return acc;
+    var localResults = results.filter(function(ea) {
+        return ea['private']['host'] === globalConfig['int']['ip'];
     });
 
     var externalPorts = udpResults.map(function(ea) {
@@ -150,12 +161,8 @@ function map(results) {
     });
 
     var topPicks = [0x1337, 0xbeef, 0xdab, 0xbea7, 0xf00d, 0xc0de, 0x0bee, 0xdead, 0xbad, 0xdab0, 0xbee5, 0x539];
-    var picks = topPicks.reduce(function(acc, ea) {
-        if(!(ea in internalPorts) && !(ea in externalPorts)) {
-            return acc + ea;
-        }
-
-        return acc;
+    var picks = topPicks.filter(function(ea) {
+        return !(ea in internalPorts) && !(ea in externalPorts);
     });
 
     if(picks.length > 0) {
