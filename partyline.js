@@ -1,9 +1,9 @@
-var nacl_factory = require('js-nacl');
 var natpmp = require('nat-pmp');
 var natupnp = require('nat-upnp');
 var async = require('async');
 var dgram = require('dgram');
 var ip = require('ip');
+var crypto = require('crypto');
 
 var upnpClient = natupnp.createClient();
 var socket = dgram.createSocket('udp4');
@@ -22,6 +22,88 @@ var globalConfig = {
 var stdin = process.openStdin();
 // peer {ip: '6.6.6.6', port: 0x1337}
 var peers = [];
+
+console.log('generating keys...');
+var dh = crypto.createDiffieHellman(2048);
+var pubKey = dh.generateKeys('hex');
+console.log(`pubkey ${pubKey}`);
+// id is sha512 of public key
+var fingerprint = crypto.createHash('sha256').update(Buffer.from(pubKey, 'hex')).digest('hex');
+console.log(`fingerprint: ${fingerprint}`);
+
+bunction bufferXor(a, b) {
+    var length = Math.max(a.length, b.length)
+    var buffer = Buffer.allocUnsafe(length)
+
+    for (var i = 0; i < length; ++i) {
+        buffer[i] = a[i] ^ b[i]
+    }
+
+    return buffer
+}
+
+// Buffer.compare(b1, b2)
+// -1 first is less
+// 1 second is less
+
+function calculateIdealRoutingTable(fingerprint) {
+    // iterate idx over 0 to 255
+    // xor fingerprint with 2**idx
+    // insert ideal to position in routing table
+}
+
+var idealRoutingTable = calculateIdealRoutingTable(fingerprint);
+
+// console.log('generating keys...');
+// var dh2 = crypto.createDiffieHellman(dh.getPrime(), dh.getGenerator());
+// var pubKey2 = dh2.generateKeys('hex');
+// console.log(`pubkey ${pubKey2}`);
+// // id is sha512 of public key
+// var fingerprint2 = crypto.createHash('sha256').update(Buffer.from(pubKey2, 'hex')).digest('hex');
+// console.log(`fingerprint: ${fingerprint2}`);
+
+// dh2.computeSecret(pubKey, 'hex');
+// var sessionSecret = dh.computeSecret(pubKey2, 'hex');
+
+// TODO: create image with fingerprint
+
+// join
+function join(ip, port) {
+    // connect to peer
+    // get peerId
+    // get peer public key
+    // add peer to routing table with key
+    // return peerId
+}
+
+// leave
+function leave() {
+    // iterate peer list
+    // notify peers that node is disconnecting
+}
+
+// copy routing table
+function copyRoutingTable(peerId) {
+    // ask peer for routing table
+    // check signature
+    // return peerRoutingTable
+}
+
+// build node routing table
+function buildRoutingTable(peerTable) {
+    // iterate over ideal routing table
+        // find closest peer in peer's routing table
+        // iteratively query peers for closest to ideal
+            // stop when contacted peer returns self
+
+    // TODO: try multiple routes?
+    // TODO: spam all peers for closest and work till consensus?
+}
+
+// find closest
+function queryClosest(peerId, targetId) {
+    // send message asking for closest
+}
 
 function addPeer(ip, port) {
     var filtered = peers.filter(function(ea) {
@@ -61,7 +143,21 @@ function bootstrap(toks) {
     }).join('.');
 
     var port = parseInt(portEnc, 16);
-    addPeer(ip, port);
+    var peerId = join(ip, port);
+
+    if(!peerId) {
+        console.error('bootstrap failed, peer offline?');
+        return true;
+    }
+
+    var peerRoutingTable = copyRoutingTable(peerId);
+    if(!routingTable) {
+        console.error('failed to copy peer routing table');
+        return true;   
+    }
+
+    buildRoutingTable(peerRoutingTable);
+
     return true;
 }
 
@@ -106,6 +202,7 @@ function serverInit() {
     bootstrapInfo += globalConfig['ext']['port'].toString(16).padStart(4, '0');
 
     console.log(`bootstrap info: ${bootstrapInfo}`);
+    console.log(`(give your bootstrap info to people to connect to you)`);
 
     stdin.addListener("data", function(d) {
         // note:  d is an object, and when converted to a string it will
@@ -142,7 +239,7 @@ function getIP() {
     });
 }
 
-function map(results) {
+function holePunch(results) {
     // find unused port
     var udpResults = results.slice(0,20).filter(function(ea) { 
         return ea['protocol'] === 'udp';
@@ -211,7 +308,6 @@ function init() {
     upnpClient.getMappings(function(err, results) {
         killError(err);
         var found = false;
-        var udpPorts = [];
         for(ea in results) {
             var description = results[ea]['description'];
             var privateIP = results[ea]['private']['host'];
@@ -229,13 +325,28 @@ function init() {
 
         if(!found) {
             console.log('not found, mapping');
-            map(results);
+            holePunch(results);
             return;
         }
         
         getIP();
-    })
+    });
 }
 
-init();
+function listMappings() {
+    upnpClient.getMappings(function(err, results) {
+        killError(err);
+        for(ea in results) {
+            var description = results[ea]['description'];
+            var privateIP = results[ea]['private']['host'];
+            var udp = results[ea]['protocol'] === 'udp';
 
+            if(udp && description == 'Party line!') {
+                console.log(results[ea]);
+            } 
+        } 
+    });
+}
+
+// init();
+listMappings();
