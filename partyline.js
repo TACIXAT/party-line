@@ -4,6 +4,7 @@ var async = require('async');
 var dgram = require('dgram');
 var ip = require('ip');
 var crypto = require('crypto');
+var keypair = require('keypair');
 
 var upnpClient = natupnp.createClient();
 var socket = dgram.createSocket('udp4');
@@ -17,42 +18,49 @@ var globalConfig = {
         ip: null,
         port: null,
     },
+    verified: false,
+    routingTableBuilt: false,
+    bootstrapPeer: null,
+}
+
+function sha256(data) {
+    return crypto.createHash('sha256').update(data).digest('hex');
+}
+
+function sign(data) {
+    var signer = crypto.createSign('SHA256');
+    signer.update(data);
+
+    var privkey = globalConfig['pair'].private;
+    var sig = signer.sign(privkey, 'hex');
+    return sig;
+}
+
+function verify(pubkey, sig, data) {
+    var verifier = crypto.createVerify('sha256');
+    verifier.update(data);
+    return verifier.verify(pubkey, sig, 'hex');
 }
 
 var stdin = process.openStdin();
 // peer {ip: '6.6.6.6', port: 0x1337}
-var peers = [];
+var peerList = new Array(256);
 
-console.log('generating keys...');
+console.log('generating keypair...');
+var pair = keypair({bits: 2048}); 
+var id = sha256(pair.public);
+console.log(`id: ${id}`);
+
+console.log('generating ephemeral keys...');
 var dh = crypto.createDiffieHellman(2048);
-var pubKey = dh.generateKeys('hex');
-console.log(`pubkey ${pubKey}`);
-// id is sha512 of public key
-var fingerprint = crypto.createHash('sha256').update(Buffer.from(pubKey, 'hex')).digest('hex');
-console.log(`fingerprint: ${fingerprint}`);
+var pubkey = dh.generateKeys('hex');
+console.log(`complete!`);
 
-bunction bufferXor(a, b) {
-    var length = Math.max(a.length, b.length)
-    var buffer = Buffer.allocUnsafe(length)
+globalConfig['id'] = id;
+globalConfig['pair'] = pair;
+globalConfig['dh'] = dh;
 
-    for (var i = 0; i < length; ++i) {
-        buffer[i] = a[i] ^ b[i]
-    }
-
-    return buffer
-}
-
-// Buffer.compare(b1, b2)
-// -1 first is less
-// 1 second is less
-
-function calculateIdealRoutingTable(fingerprint) {
-    // iterate idx over 0 to 255
-    // xor fingerprint with 2**idx
-    // insert ideal to position in routing table
-}
-
-var idealRoutingTable = calculateIdealRoutingTable(fingerprint);
+// TODO: create image with fingerprint
 
 // console.log('generating keys...');
 // var dh2 = crypto.createDiffieHellman(dh.getPrime(), dh.getGenerator());
@@ -65,44 +73,222 @@ var idealRoutingTable = calculateIdealRoutingTable(fingerprint);
 // dh2.computeSecret(pubKey, 'hex');
 // var sessionSecret = dh.computeSecret(pubKey2, 'hex');
 
-// TODO: create image with fingerprint
+function bufferXor(a, b) {
+    var length = Math.max(a.length, b.length)
+    var buffer = Buffer.allocUnsafe(length)
+
+    for (var i = 0; i < length; ++i) {
+         buffer[i] = a[i] ^ b[i];
+    }
+
+    return buffer
+}
+
+function calculateIdealRoutingTable(fingerprint) {
+    var idealPeerList = [];
+    for(var i = 0; i < 256; i++) {
+        var powerBuf = Buffer.from((2**i).toString(16).padStart(64, '0'), 'hex');
+        var idealPeer = bufferXor(fingerprint, powerBuf);
+        idealPeerList.push(idealPeer);
+    }
+    return idealPeerList;
+}
+
+var idealRoutingTable = calculateIdealRoutingTable(fingerprint);
+
+function testSelfConnection() {
+    // TODO
+    // connect on ext ip, port to self
+    // this should validate that the port is open
+}
+
+function send(peer, data) {
+    // send message asking for closest
+    var socket = globalConfig['socket'];
+    // connect to peer
+    var pubkey = globalConfig['pair'].public;
+    var dataJSON = JSON.stringify(data);
+    var sig = sign(dataJSON);
+
+    var msg = {
+        data: dataJSON,
+        sig: sig,
+    };
+
+    var msgJSON = JSON.stringify(msg);
+    socket.send(msgJSON, peer['port'], peer['ip']);
+}
+
+function flood(data) {
+    var sent = [];
+    for(var i = 0; i < 256; i++) {
+        var peer = peerTable[i];
+        if(peer['id'] in sent) {
+            continue;
+        }
+
+        send(peer, data);
+        sent.push(peer['id']);
+    }
+}
 
 // join
 function join(ip, port) {
+    var socket = globalConfig['socket'];
     // connect to peer
+    var pubkey = globalConfig['pair'].public;
+
+    var data = {
+        type: 'join',
+        id: globalConfig['id'],
+        ip: globalConfig['ext']['ip'],
+        port: globalConfig['ext']['port'],
+        key: pubkey,
+    };
+
+    var dataJSON = JSON.stringify(data);
+    var sig = sign(dataJSON);
+
+    var msg = {
+        data: dataJSON,
+        sig: sig,
+    };
+
+    var msgJSON = JSON.stringify(msg);
+    socket.send(msgJSON, port, ip);
+
     // get peerId
     // get peer public key
     // add peer to routing table with key
     // return peerId
 }
 
+function onPeerJoined(msgJSON) {
+    // TODO
+    // send verify
+}
+
+function onVerify(msgJSON) {
+    var msg = JSON.parse(msgJSON);
+    var data = JSON.parse(msg['data']);
+    var sig = msg['sig'];
+
+    var peerIp = data['ip'];
+    var peerPort = data['port'];
+    var peerPubkey = data['pubkey'];
+
+    var bootstrapIp = globalConfig['bootstrapPeer']['ip'];
+    var bootstrapPort = globalConfig['bootstrapPeer']['port'];
+    var bootstrapId = globalConfig['bootstrapPeer']['id'];
+
+    var peerId = sha256(peerPubkey);
+    var peerIdMatch = peerId === bootstrapId;
+    var selfIdMatch = data['verify'] === globalConfig['id'];
+    var dataIntegrity = verify(peerPubkey, sig, msg['data']);
+
+    if (peerIdMatch && selfIdMatch && dataIntegrity) {
+        globalConfig['verified'] = true;
+    } else {
+        console.error('ABORT: SIGNATURE VERIFICATION FAILED ON BOOTSTRAP PEER');
+        process.exit(1);
+    }
+
+    globalConfig['bootstrapPeer']['ip'] = peerIp;
+    globalConfig['bootstrapPeer']['port'] = peerPort;
+    globalConfig['bootstrapPeer']['pubkey'] = peerPubkey;
+
+    var peerTable = data['peerTable'];
+    // TODO: pubkeyTable
+
+    peerTable.push(globalConfig['bootstrapPeer']);
+    buildRoutingTable(peerTable);
+}
+
 // leave
 function leave() {
+    // TODO
     // iterate peer list
     // notify peers that node is disconnecting
 }
 
-// copy routing table
-function copyRoutingTable(peerId) {
-    // ask peer for routing table
-    // check signature
-    // return peerRoutingTable
+// Buffer.compare(b1, b2)
+// b1.compare(b2)
+// -1 first is less
+// 1 second is less
+
+function findClosest(peerTable, targetId) {
+    var targetIdBuf = Buffer.from(targetId, 'hex');
+
+    var closest = peerTable[0];
+    var closestIdBuf = Buffer.from(closest['id'], 'hex');
+    var closestDist = bufferXor(closestIdBuf, targetIdBuf);
+
+    for(var idx in peerTable) {
+        var peer = peerTable[idx];
+        var peerId = peer['id'];
+        var peerIdBuf = Buffer.from(peerId, 'hex');
+        var peerDist = bufferXor(peerIdBuf, targetIdBuf);
+        if(peerDist.compare(closestDist) < 0) {
+            closest = peer;
+            closestDist = peerDist;
+        }
+    }
+
+    return closest;
+}
+
+function announce() {
+    // announce self
+    var pubkey = pair.public;
+    var data = {
+        type: 'announce',
+        id: globalConfig['id'],
+        ip: globalConfig['ext']['ip'],
+        port: globalConfig['ext']['port'],
+        key: pubkey,
+    };
+
+    flood(data);
+}
+
+function onAnnounce() {
+    // TODO
+    // check have key
+    // verify key
+    // check update routing table
+    // propagate
 }
 
 // build node routing table
 function buildRoutingTable(peerTable) {
-    // iterate over ideal routing table
-        // find closest peer in peer's routing table
-        // iteratively query peers for closest to ideal
-            // stop when contacted peer returns self
+    for(var i = 0; i < 256; i++) {
+        var idealPeerId = idealRoutingTable[i];
+        var closestPeer = findClosest(peerTable, idealPeerId);
+        var peerTable[i] = closestPeer;
+    }
 
-    // TODO: try multiple routes?
-    // TODO: spam all peers for closest and work till consensus?
+    announce();
+
+    for(var i = 0; i < 256; i++) {
+        var targetId = idealRoutingTable[i];
+        var peer = peerTable[i];
+        queryClosest(peer, targetId);
+    }
 }
 
 // find closest
-function queryClosest(peerId, targetId) {
+function queryClosest(peer, targetId) {
     // send message asking for closest
+    var data = {
+        id: globalConfig['id'],
+        target: targetId,
+    };
+
+    send(peer, data);
+}
+
+function onQueryClosest(msgJSON) {
+    // update peerTable
 }
 
 function addPeer(ip, port) {
@@ -126,13 +312,16 @@ function bootstrap(toks) {
     }
 
     var conn = toks[1];
-    var match = conn.match(/([a-fA-F0-9]{8}):([a-fA-F0-9]{4})/);
+    var match = conn.match(/([a-fA-F0-9]{8}):([a-fA-F0-9]{4}):([a-fA-F0-9]{64})/);
     if(!match) {
         return false;
     }
 
+
     var ipEnc = match[1];
     var portEnc = match[2];
+    var id = match[3];
+
     var ip = [
         parseInt(ipEnc.substr(0, 2), 16),
         parseInt(ipEnc.substr(2, 2), 16),
@@ -143,20 +332,10 @@ function bootstrap(toks) {
     }).join('.');
 
     var port = parseInt(portEnc, 16);
-    var peerId = join(ip, port);
+    
+    globalConfig['bootstrapPeer'] = {ip, port, id};
 
-    if(!peerId) {
-        console.error('bootstrap failed, peer offline?');
-        return true;
-    }
-
-    var peerRoutingTable = copyRoutingTable(peerId);
-    if(!routingTable) {
-        console.error('failed to copy peer routing table');
-        return true;   
-    }
-
-    buildRoutingTable(peerRoutingTable);
+    join(ip, port, id);
 
     return true;
 }
@@ -194,12 +373,16 @@ function serverInit() {
 
     socket.bind(globalConfig['int']['port']);
 
+    globalConfig['socket'] = socket;
+
     var bootstrapInfo = globalConfig['ext']['ip'].split('.').map(function(ea) {
         return parseInt(ea).toString(16).padStart(2, '0');
     }).join('');
 
     bootstrapInfo += ':';
     bootstrapInfo += globalConfig['ext']['port'].toString(16).padStart(4, '0');
+    bootstrapInfo += ':';
+    bootstrapInfo += fingerprint;
 
     console.log(`bootstrap info: ${bootstrapInfo}`);
     console.log(`(give your bootstrap info to people to connect to you)`);
@@ -228,7 +411,7 @@ function killError(err) {
     }
 }
 
-function getIP() {
+function getIp() {
     upnpClient.externalIp(function(err, ip) {
         if(err) {
             killError(err);
@@ -310,11 +493,11 @@ function init() {
         var found = false;
         for(ea in results) {
             var description = results[ea]['description'];
-            var privateIP = results[ea]['private']['host'];
+            var privateIp = results[ea]['private']['host'];
             var enabled = results[ea]['enabled'];
             var udp = results[ea]['protocol'] === 'udp';
 
-            if(enabled && udp && description == 'Party line!' &&  privateIP == globalConfig['int']['ip']) {
+            if(enabled && udp && description == 'Party line!' &&  privateIp == globalConfig['int']['ip']) {
                 found = true;
                 console.log('found');
                 globalConfig['int']['port'] = results[ea]['private']['port'];
@@ -329,7 +512,7 @@ function init() {
             return;
         }
         
-        getIP();
+        getIp();
     });
 }
 
@@ -338,7 +521,7 @@ function listMappings() {
         killError(err);
         for(ea in results) {
             var description = results[ea]['description'];
-            var privateIP = results[ea]['private']['host'];
+            var privateIp = results[ea]['private']['host'];
             var udp = results[ea]['protocol'] === 'udp';
 
             if(udp && description == 'Party line!') {
