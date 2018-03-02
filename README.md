@@ -16,6 +16,8 @@ Main Line is the primary chat and control channel for the application. Things ar
 
 Party Lines are sub chats, established between a set of peers. These chats have end to end encryption and file transfer capabilities. 
 
+Here's a link to the [protocol](protocol.md) for you fucking nerds!
+
 ## Getting Started
 
 `npm install some stuff`
@@ -50,7 +52,7 @@ No. It has no reason to.
 
 **Is this Tor?**
 
-No. While your messages in Main Line will often route through other users, routing tables are public which contain your ID, IP, and port. Since you sign all your messages with your key and ID, people could figure out which IP is posting which messages.
+No. While your messages in Main Line will often route through other users, routing tables are public which contain your ID, IP, and port. Since you sign all your messages with your key and ID, it is not unrealistic that people could figure out which IP is posting which messages.
 
 **Is this just a shitty Javascript knockoff of 9gridchan?**
 
