@@ -44,7 +44,7 @@ function verify(pubkey, sig, data) {
 
 var stdin = process.openStdin();
 // peer {ip: '6.6.6.6', port: 0x1337}
-var peerList = new Array(256);
+var peerTable = new Array(256);
 var keyTable = {};
 
 console.log('generating keypair...');
@@ -53,7 +53,7 @@ var id = sha256(pair.public);
 console.log(`id: ${id}`);
 
 console.log('generating ephemeral keys...');
-var dh = crypto.createDiffieHellman(2048);
+var dh = crypto.createDiffieHellman(1024);
 var pubkey = dh.generateKeys('hex');
 console.log(`complete!`);
 
@@ -117,6 +117,7 @@ function send(peer, data) {
     };
 
     var msgJSON = JSON.stringify(msg);
+    console.log(`sending: ${msgJSON}`)
     socket.send(msgJSON, peer['port'], peer['ip']);
 }
 
@@ -164,7 +165,7 @@ function onJoin(msgJSON) {
     var socket = globalConfig['socket'];
 
     var pubkey = pair.public;
-    var data = {
+    var responseData = {
         type: 'verify',
         ip: globalConfig['ext']['ip'],
         port: globalConfig['ext']['port'],
@@ -178,7 +179,7 @@ function onJoin(msgJSON) {
         port: data['port'],
         ip: data['ip'],
     }
-    send(peer, data);
+    send(peer, responseData);
 }
 
 function onVerify(msgJSON) {
@@ -594,10 +595,11 @@ function serverInit() {
     });
 
     socket.on('message', (msgJSON, rinfo) => {
-        console.log(`server got: ${msg} from ${rinfo.address}:${rinfo.port}`);
+        console.log(`server got: ${msgJSON} from ${rinfo.address}:${rinfo.port}`);
         // handle external message
-        var msg = JSON.parse(msg);
-        switch(msg['type']) {
+        var msg = JSON.parse(msgJSON);
+        var data = JSON.parse(msg['data']);
+        switch(data['type']) {
             case 'join':
                 onJoin(msgJSON);
                 break;
@@ -750,32 +752,40 @@ function unmap() {
 }
 
 function init() {
-    upnpClient.getMappings(function(err, results) {
-        killError(err);
-        var found = false;
-        for(ea in results) {
-            var description = results[ea]['description'];
-            var privateIp = results[ea]['private']['host'];
-            var enabled = results[ea]['enabled'];
-            var udp = results[ea]['protocol'] === 'udp';
+    if(ip.address().match(/(^127\.)|(^192\.168\.)|(^10\.)|(^172\.1[6-9]\.)|(^172\.2[0-9]\.)|(^172\.3[0-1]\.)|(^::1$)|(^[fF][cCdD])/)) {
+        upnpClient.getMappings(function(err, results) {
+            killError(err);
+            var found = false;
+            for(ea in results) {
+                var description = results[ea]['description'];
+                var privateIp = results[ea]['private']['host'];
+                var enabled = results[ea]['enabled'];
+                var udp = results[ea]['protocol'] === 'udp';
 
-            if(enabled && udp && description == 'Party line!' &&  privateIp == globalConfig['int']['ip']) {
-                found = true;
-                console.log('found');
-                globalConfig['int']['port'] = results[ea]['private']['port'];
-                globalConfig['ext']['port'] = results[ea]['public']['port'];
-                break;
+                if(enabled && udp && description == 'Party line!' &&  privateIp == globalConfig['int']['ip']) {
+                    found = true;
+                    console.log('found');
+                    globalConfig['int']['port'] = results[ea]['private']['port'];
+                    globalConfig['ext']['port'] = results[ea]['public']['port'];
+                    break;
+                } 
             } 
-        } 
 
-        if(!found) {
-            console.log('not found, mapping');
-            holePunch(results);
-            return;
-        }
-        
-        getIp();
-    });
+            if(!found) {
+                console.log('not found, mapping');
+                holePunch(results);
+                return;
+            }
+            
+            getIp();
+        });
+    } else {
+        globalConfig['int']['port'] = 0xdab;
+        globalConfig['ext']['port'] = 0xdab;
+        globalConfig['int']['ip'] = ip.address();
+        globalConfig['ext']['ip'] = ip.address();
+        serverInit();
+    }
 }
 
 function listMappings() {
