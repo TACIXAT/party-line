@@ -45,6 +45,7 @@ function verify(pubkey, sig, data) {
 var stdin = process.openStdin();
 // peer {ip: '6.6.6.6', port: 0x1337}
 var peerList = new Array(256);
+var keyTable = {};
 
 console.log('generating keypair...');
 var pair = keypair({bits: 2048}); 
@@ -84,17 +85,17 @@ function bufferXor(a, b) {
     return buffer
 }
 
-function calculateIdealRoutingTable(fingerprint) {
+function calculateIdealRoutingTable() {
     var idealPeerList = [];
     for(var i = 0; i < 256; i++) {
         var powerBuf = Buffer.from((2**i).toString(16).padStart(64, '0'), 'hex');
-        var idealPeer = bufferXor(fingerprint, powerBuf);
+        var idealPeer = bufferXor(globalConfig['id'], powerBuf);
         idealPeerList.push(idealPeer);
     }
     return idealPeerList;
 }
 
-var idealRoutingTable = calculateIdealRoutingTable(fingerprint);
+var idealRoutingTable = calculateIdealRoutingTable();
 
 function testSelfConnection() {
     // TODO
@@ -123,7 +124,7 @@ function flood(data) {
     var sent = [];
     for(var i = 0; i < 256; i++) {
         var peer = peerTable[i];
-        if(peer['id'] in sent) {
+        if(send.indexof(peer['id'] > -1)) {
             continue;
         }
 
@@ -133,7 +134,7 @@ function flood(data) {
 }
 
 // join
-function join(ip, port) {
+function join(ip, port, id) {
     var socket = globalConfig['socket'];
     // connect to peer
     var pubkey = globalConfig['pair'].public;
@@ -146,16 +147,7 @@ function join(ip, port) {
         key: pubkey,
     };
 
-    var dataJSON = JSON.stringify(data);
-    var sig = sign(dataJSON);
-
-    var msg = {
-        data: dataJSON,
-        sig: sig,
-    };
-
-    var msgJSON = JSON.stringify(msg);
-    socket.send(msgJSON, port, ip);
+    send({ip, port, id}, data);
 
     // get peerId
     // get peer public key
@@ -163,12 +155,37 @@ function join(ip, port) {
     // return peerId
 }
 
-function onPeerJoined(msgJSON) {
-    // TODO
+function onJoin(msgJSON) {
+    var msg = JSON.parse(msgJSON);
+    var data = JSON.parse(msg['data']);
+    var sig = msg['sig'];
+
     // send verify
+    var socket = globalConfig['socket'];
+
+    var pubkey = pair.public;
+    var data = {
+        type: 'verify',
+        ip: globalConfig['ext']['ip'],
+        port: globalConfig['ext']['port'],
+        key: pubkey,
+        verify: sha256(data['key']),
+        peerTable: peerTable,
+        keyTable: keyTable,
+    };
+    
+    var peer = {
+        port: data['port'],
+        ip: data['ip'],
+    }
+    send(peer, data);
 }
 
 function onVerify(msgJSON) {
+    if(globalConfig['verified']) {
+        return;
+    }
+
     var msg = JSON.parse(msgJSON);
     var data = JSON.parse(msg['data']);
     var sig = msg['sig'];
@@ -198,19 +215,135 @@ function onVerify(msgJSON) {
     globalConfig['bootstrapPeer']['pubkey'] = peerPubkey;
 
     var peerTable = data['peerTable'];
-    // TODO: pubkeyTable
+
+    keyTable = data['keyTable'];
+    for(var keyId in keyTable) {
+        if(keyId != sha256(keyTable[keyId])) {
+            delete keyTable[keyId];
+        }
+    }
+    keyTable[peerId] = peerPubkey;
 
     peerTable.push(globalConfig['bootstrapPeer']);
     buildRoutingTable(peerTable);
+    globalConfig['routingTableBuilt'] = true;
 }
 
 // leave
 function leave() {
-    // TODO
-    // iterate peer list
-    // notify peers that node is disconnecting
+    var closest = findClosest(peerTable, globalConfig['id']);
+    var pubkey = pair.public;
+    var data = {
+        type: 'leave',
+        id: globalConfig['id'],
+        key: pubkey,
+        closest: closest,
+    };
+
+    flood(data);
 }
 
+function findClosestExclude(peerTable, targetId, excludeId) {
+    var targetIdBuf = Buffer.from(targetId, 'hex');
+
+    var closest;
+    for(var idx in peerTable) {
+        if(peerTable[idx]['id'] == excludeId) {
+            continue;
+        }
+        closest = peerTable[idx];
+        break;
+    }
+
+    if(closest === undefined) {
+        return undefined;
+    }
+
+    var closestIdBuf = Buffer.from(closest['id'], 'hex');
+    var closestDist = bufferXor(closestIdBuf, targetIdBuf);
+
+    for(var idx in peerTable) {
+        var peer = peerTable[idx];
+        var peerId = peer['id'];
+
+        if(peerId === excludeId) {
+            continue;
+        }
+
+        var peerIdBuf = Buffer.from(peerId, 'hex');
+        var peerDist = bufferXor(peerIdBuf, targetIdBuf);
+        if(peerDist.compare(closestDist) < 0) {
+            closest = peer;
+            closestDist = peerDist;
+        }
+    }
+
+    return closest;
+}
+
+function updateTableRemove(peerId) {
+    var contains = false;
+    var indices = [];
+    for(var i = 0; i < 256; i++) {
+        if(peerTable[i]['id'] === peerId) {
+            indices.push(i);
+        }
+    }
+
+    if(indices.length === 0) {
+        return;
+    }
+
+    var idealIds = [];
+    for(var j in indices) {
+        var idx = indices[j];
+        var peer = peerTable[idx];
+        var idealPeerId = idealRoutingTable[idx];
+        idealIds.push(idealPeerId);
+        var closest = findClosestExclude(peerTable, idealPeerId, peer['id']);
+        
+        if(closest === undefined) {
+            delete peerTable[idx];
+            continue;
+        }
+
+        peerTable[idx] = closest;
+    }
+    return idealIds;
+}
+
+function onLeave() {
+    var msg = JSON.parse(msgJSON);
+    var data = JSON.parse(msg['data']);
+    var sig = msg['sig'];
+
+    // check have key
+    var peerPubkey = data['key'];
+    var peerId = data['id'];
+    if(!(peerId in keyTable)) {
+        return;
+    }
+
+    // verify key
+    var pubkeyHash = sha256(peerPubkey);
+    var peerIdMatch = peerId === pubkeyHash;
+    var dataIntegrity = verify(peerPubkey, sig, msg['data']);
+
+    if(!(peerIdMatch && dataIntegrity)) {
+        return;
+    }
+
+    // check update routing table
+    delete keyTable[peerId];
+    var idealIds = updateTableRemove(peerId);
+    for(var idx in idealIds) {
+        var idealPeerId = idealIds[idx];
+        queryClosest(data['closest'], idealPeerId);
+    }
+
+    // propagate
+    floodReplay(msgJSON);
+}
 // Buffer.compare(b1, b2)
 // b1.compare(b2)
 // -1 first is less
@@ -251,12 +384,53 @@ function announce() {
     flood(data);
 }
 
+function floodReplay(data) {
+    var sent = [];
+    for(var i = 0; i < 256; i++) {
+        var peer = peerTable[i];
+        if(peer['id'] in sent) {
+            continue;
+        }
+
+        socket.send(data, peer['port'], peer['ip']);
+        sent.push(peer['id']);
+    }
+}
+
 function onAnnounce() {
-    // TODO
+    var msg = JSON.parse(msgJSON);
+    var data = JSON.parse(msg['data']);
+    var sig = msg['sig'];
+
     // check have key
+    var peerPubkey = data['key'];
+    var peerId = data['id'];
+    if(peerId in keyTable) {
+        return;
+    }
+
     // verify key
+    var pubkeyHash = sha256(peerPubkey);
+    var peerIdMatch = peerId === pubkeyHash;
+    var dataIntegrity = verify(peerPubkey, sig, msg['data']);
+
+    if(!(peerIdMatch && dataIntegrity)) {
+        return;
+    }
+
     // check update routing table
+    keyTable[peerId] = peerPubkey;
+    var peer = {
+        id: peerId,
+        ip: data['ip'],
+        port: data['port'],
+        key: peerPubkey,
+    }
+
+    updateTable(peer);
+
     // propagate
+    floodReplay(msgJSON);
 }
 
 // build node routing table
@@ -264,7 +438,7 @@ function buildRoutingTable(peerTable) {
     for(var i = 0; i < 256; i++) {
         var idealPeerId = idealRoutingTable[i];
         var closestPeer = findClosest(peerTable, idealPeerId);
-        var peerTable[i] = closestPeer;
+        peerTable[i] = closestPeer;
     }
 
     announce();
@@ -280,7 +454,10 @@ function buildRoutingTable(peerTable) {
 function queryClosest(peer, targetId) {
     // send message asking for closest
     var data = {
+        type: 'query_closest',
         id: globalConfig['id'],
+        ip: globalConfig['ext']['ip'],
+        port: globalConfig['ext']['port'],
         target: targetId,
     };
 
@@ -289,21 +466,78 @@ function queryClosest(peer, targetId) {
 
 function onQueryClosest(msgJSON) {
     // update peerTable
+    var msg = JSON.parse(msgJSON);
+    var data = JSON.parse(msg['data']);
+    var sig = msg['sig'];
+
+    var closest = findClosest(peerTable, data['target'], true);
+    var pubkey = pair.public;
+    var peerSelf = {
+        id: globalConfig['id'],
+        ip: globalConfig['ext']['ip'],
+        port: globalConfig['ext']['port'],
+        key: pubkey,
+    };
+
+    var targetIdBuf = Buffer.from(data['target'], 'hex');
+    var closestDist = bufferXor(Buffer.from(closest['id'], 'hex'), targetIdBuf);
+    var selfDist = bufferXor(Buffer.from(peerSelf['id'], 'hex'), targetIdBuf);
+
+    if(selfDist.compare(closestDist) < 0) {
+        closest = peerSelf;
+    }
+
+    var responseData = {
+        type: 'response_closest',
+        closest: closest,
+        from: peerSelf,
+        self: false,
+    };
+
+    if(closest === id) {
+        responseData['self'] = true;
+    }
+
+    var peer = {port: data['port'], ip: data['ip']};
+    send(peer, responseData);
 }
 
-function addPeer(ip, port) {
-    var filtered = peers.filter(function(ea) {
-        return ea['ip'] == ip && ea['port'] == port;
-    });
+function updateTable(peer) {
+    for(var i = 0; i < 256; i++) {
+        var targetId = idealRoutingTable[i];
+        var currPeer = peerTable[i];
+        var targetIdBuf = Buffer.from(targetId, 'hex');
+        var currIdBuf = Buffer.from(currPeer['id'], 'hex');
+        var peerIdBuf = Buffer.from(peer['id'], 'hex');
 
-    if(filtered.length > 0) {
+        var currDistance = bufferXor(targetIdBuf, currIdBuf);
+        var peerDistance = bufferXor(targetIdBuf, peerIdBuf);
+
+        if(peerDistance.compare(currDistance) < 0) {
+            peerTable[i] = peer;
+        }
+    }
+}
+
+function onResponseClosest(msgJSON) {
+    // update peerTable
+    var msg = JSON.parse(msgJSON);
+    var data = JSON.parse(msg['data']);
+    var sig = msg['sig'];
+
+    if(!verify(data['from']['pubkey'], sig, msg['data'])) {
         return;
     }
 
-    var peer = {ip: ip, port: port};
+    // update routing table with peer who replied
+    var peer = data['from'];
+    updateTable(peer);
 
-    console.log('added peer', peer);
-    peers.push(peer);
+    // ask suggested peer for closest
+    if(!data['self']) {
+        var closest = data['closest'];
+        send(closest, responseData);
+    }
 }
 
 function bootstrap(toks) {
@@ -316,7 +550,6 @@ function bootstrap(toks) {
     if(!match) {
         return false;
     }
-
 
     var ipEnc = match[1];
     var portEnc = match[2];
@@ -360,10 +593,35 @@ function serverInit() {
         process.exit(1);
     });
 
-    socket.on('message', (msg, rinfo) => {
+    socket.on('message', (msgJSON, rinfo) => {
         console.log(`server got: ${msg} from ${rinfo.address}:${rinfo.port}`);
         // handle external message
-        addPeer(rinfo.address, rinfo.port);
+        var msg = JSON.parse(msg);
+        switch(msg['type']) {
+            case 'join':
+                onJoin(msgJSON);
+                break;
+            case 'verify':
+                onVerify(msgJSON);
+                break;
+            case 'leave':
+                onLeave(msgJSON);
+                break;
+            case 'announce':
+                onAnnounce(msgJSON);
+                break;
+            case 'query_closest':
+                onQueryClosest(msgJSON);
+                break;
+            case 'response_closest':
+                onResponseClosest(msgJSON);
+                break;
+            case 'chat':
+                onChat(msgJSON);
+                break;
+            default:
+                break;
+        }
     });
 
     socket.on('listening', () => {
@@ -382,7 +640,7 @@ function serverInit() {
     bootstrapInfo += ':';
     bootstrapInfo += globalConfig['ext']['port'].toString(16).padStart(4, '0');
     bootstrapInfo += ':';
-    bootstrapInfo += fingerprint;
+    bootstrapInfo += globalConfig['id'];
 
     console.log(`bootstrap info: ${bootstrapInfo}`);
     console.log(`(give your bootstrap info to people to connect to you)`);
@@ -396,9 +654,13 @@ function serverInit() {
 
         if(!handleCommand(input)) {
             // handle userInput
-            for(idx in peers) {
-                var peer = peers[idx];
-                socket.send(input, peer['port'], peer['ip']);
+            for(idx in peerTable) {
+                var peer = peerTable[idx];
+                var data = {
+                    type: 'chat',
+                    msg: input,
+                }
+                send(peer, data);
             }
         }
     });
@@ -531,5 +793,5 @@ function listMappings() {
     });
 }
 
-// init();
-listMappings();
+init();
+// listMappings();
