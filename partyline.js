@@ -125,7 +125,7 @@ function flood(data) {
     var sent = [];
     for(var i = 0; i < 256; i++) {
         var peer = peerTable[i];
-        if(send.indexof(peer['id'] > -1)) {
+        if(send.indexOf(peer['id'] > -1)) {
             continue;
         }
 
@@ -161,6 +161,11 @@ function onJoin(msgJSON) {
     var data = JSON.parse(msg['data']);
     var sig = msg['sig'];
 
+    if(!verify(data['pubkey'], sig, msg['data'])) {
+        console.log('failed to verify join');
+        return;
+    }
+
     // send verify
     var socket = globalConfig['socket'];
 
@@ -180,6 +185,29 @@ function onJoin(msgJSON) {
         ip: data['ip'],
     }
     send(peer, responseData);
+}
+
+// build node routing table
+function buildRoutingTable(seedTable, extra) {
+    var fullTable = seedTable;
+    
+    if(extra) {
+        fullTable = seedTable.concat(extra);
+    }
+
+    for(var i = 0; i < 256; i++) {
+        var idealPeerId = idealRoutingTable[i];
+        var closestPeer = findClosest(fullTable, idealPeerId);
+        peerTable[i] = closestPeer;
+    }
+
+    announce();
+
+    for(var i = 0; i < 256; i++) {
+        var targetId = idealRoutingTable[i];
+        var peer = peerTable[i];
+        queryClosest(peer, targetId);
+    }
 }
 
 function onVerify(msgJSON) {
@@ -225,150 +253,8 @@ function onVerify(msgJSON) {
     }
     keyTable[peerId] = peerPubkey;
 
-    peerTable.push(globalConfig['bootstrapPeer']);
-    buildRoutingTable(peerTable);
+    buildRoutingTable(peerTable, globalConfig['bootstrapPeer']);
     globalConfig['routingTableBuilt'] = true;
-}
-
-// leave
-function leave() {
-    var closest = findClosest(peerTable, globalConfig['id']);
-    var pubkey = pair.public;
-    var data = {
-        type: 'leave',
-        id: globalConfig['id'],
-        key: pubkey,
-        closest: closest,
-    };
-
-    flood(data);
-}
-
-function findClosestExclude(peerTable, targetId, excludeId) {
-    var targetIdBuf = Buffer.from(targetId, 'hex');
-
-    var closest;
-    for(var idx in peerTable) {
-        if(peerTable[idx]['id'] == excludeId) {
-            continue;
-        }
-        closest = peerTable[idx];
-        break;
-    }
-
-    if(closest === undefined) {
-        return undefined;
-    }
-
-    var closestIdBuf = Buffer.from(closest['id'], 'hex');
-    var closestDist = bufferXor(closestIdBuf, targetIdBuf);
-
-    for(var idx in peerTable) {
-        var peer = peerTable[idx];
-        var peerId = peer['id'];
-
-        if(peerId === excludeId) {
-            continue;
-        }
-
-        var peerIdBuf = Buffer.from(peerId, 'hex');
-        var peerDist = bufferXor(peerIdBuf, targetIdBuf);
-        if(peerDist.compare(closestDist) < 0) {
-            closest = peer;
-            closestDist = peerDist;
-        }
-    }
-
-    return closest;
-}
-
-function updateTableRemove(peerId) {
-    var contains = false;
-    var indices = [];
-    for(var i = 0; i < 256; i++) {
-        if(peerTable[i]['id'] === peerId) {
-            indices.push(i);
-        }
-    }
-
-    if(indices.length === 0) {
-        return;
-    }
-
-    var idealIds = [];
-    for(var j in indices) {
-        var idx = indices[j];
-        var peer = peerTable[idx];
-        var idealPeerId = idealRoutingTable[idx];
-        idealIds.push(idealPeerId);
-        var closest = findClosestExclude(peerTable, idealPeerId, peer['id']);
-        
-        if(closest === undefined) {
-            delete peerTable[idx];
-            continue;
-        }
-
-        peerTable[idx] = closest;
-    }
-    return idealIds;
-}
-
-function onLeave() {
-    var msg = JSON.parse(msgJSON);
-    var data = JSON.parse(msg['data']);
-    var sig = msg['sig'];
-
-    // check have key
-    var peerPubkey = data['key'];
-    var peerId = data['id'];
-    if(!(peerId in keyTable)) {
-        return;
-    }
-
-    // verify key
-    var pubkeyHash = sha256(peerPubkey);
-    var peerIdMatch = peerId === pubkeyHash;
-    var dataIntegrity = verify(peerPubkey, sig, msg['data']);
-
-    if(!(peerIdMatch && dataIntegrity)) {
-        return;
-    }
-
-    // check update routing table
-    delete keyTable[peerId];
-    var idealIds = updateTableRemove(peerId);
-    for(var idx in idealIds) {
-        var idealPeerId = idealIds[idx];
-        queryClosest(data['closest'], idealPeerId);
-    }
-
-    // propagate
-    floodReplay(msgJSON);
-}
-// Buffer.compare(b1, b2)
-// b1.compare(b2)
-// -1 first is less
-// 1 second is less
-
-function findClosest(peerTable, targetId) {
-    var targetIdBuf = Buffer.from(targetId, 'hex');
-
-    var closest = peerTable[0];
-    var closestIdBuf = Buffer.from(closest['id'], 'hex');
-    var closestDist = bufferXor(closestIdBuf, targetIdBuf);
-
-    for(var idx in peerTable) {
-        var peer = peerTable[idx];
-        var peerId = peer['id'];
-        var peerIdBuf = Buffer.from(peerId, 'hex');
-        var peerDist = bufferXor(peerIdBuf, targetIdBuf);
-        if(peerDist.compare(closestDist) < 0) {
-            closest = peer;
-            closestDist = peerDist;
-        }
-    }
-
-    return closest;
 }
 
 function announce() {
@@ -428,28 +314,198 @@ function onAnnounce() {
         key: peerPubkey,
     }
 
-    updateTable(peer);
+    var idealMatches = wouldUpdateTable(peer);
+    for(var idx in idealMatches) {
+        var idealPeerId = idealMatches[idx];
+        queryClosest(peer, idealPeerId);
+    }
 
     // propagate
     floodReplay(msgJSON);
 }
 
-// build node routing table
-function buildRoutingTable(peerTable) {
-    for(var i = 0; i < 256; i++) {
-        var idealPeerId = idealRoutingTable[i];
-        var closestPeer = findClosest(peerTable, idealPeerId);
-        peerTable[i] = closestPeer;
-    }
-
-    announce();
-
+function wouldUpdateTable(peer) {
+    var idealMatches = [];
     for(var i = 0; i < 256; i++) {
         var targetId = idealRoutingTable[i];
-        var peer = peerTable[i];
-        queryClosest(peer, targetId);
+        var currPeer = peerTable[i];
+        var targetIdBuf = Buffer.from(targetId, 'hex');
+        var currIdBuf = Buffer.from(currPeer['id'], 'hex');
+        var peerIdBuf = Buffer.from(peer['id'], 'hex');
+
+        var currDistance = bufferXor(targetIdBuf, currIdBuf);
+        var peerDistance = bufferXor(targetIdBuf, peerIdBuf);
+
+        if(peerDistance.compare(currDistance) < 0) {
+            idealMatches.push(targetId);
+        }
     }
+    return idealMatches;
 }
+
+function updateTable(peer) {
+    var idealMatches = [];
+    for(var i = 0; i < 256; i++) {
+        var targetId = idealRoutingTable[i];
+        var currPeer = peerTable[i];
+        var targetIdBuf = Buffer.from(targetId, 'hex');
+        var currIdBuf = Buffer.from(currPeer['id'], 'hex');
+        var peerIdBuf = Buffer.from(peer['id'], 'hex');
+
+        var currDistance = bufferXor(targetIdBuf, currIdBuf);
+        var peerDistance = bufferXor(targetIdBuf, peerIdBuf);
+
+        if(peerDistance.compare(currDistance) < 0) {
+            idealMatches.push(targetId);
+            peerTable[i] = peer;
+        }
+    }
+
+    return idealMatches;
+}
+
+// leave
+function leave() {
+    var closest = findClosest(peerTable, globalConfig['id']);
+    var pubkey = pair.public;
+    var data = {
+        type: 'leave',
+        id: globalConfig['id'],
+        closest: closest,
+    };
+
+    flood(data);
+}
+
+function findClosestExclude(searchTable, targetId, excludeId) {
+    var targetIdBuf = Buffer.from(targetId, 'hex');
+
+    var closest;
+    for(var idx in searchTable) {
+        if(searchTable[idx]['id'] == excludeId) {
+            continue;
+        }
+        closest = searchTable[idx];
+        break;
+    }
+
+    if(closest === undefined) {
+        return undefined;
+    }
+
+    var closestIdBuf = Buffer.from(closest['id'], 'hex');
+    var closestDist = bufferXor(closestIdBuf, targetIdBuf);
+
+    for(var idx in searchTable) {
+        var peer = searchTable[idx];
+        var peerId = peer['id'];
+
+        if(peerId === excludeId) {
+            continue;
+        }
+
+        var peerIdBuf = Buffer.from(peerId, 'hex');
+        var peerDist = bufferXor(peerIdBuf, targetIdBuf);
+        if(peerDist.compare(closestDist) < 0) {
+            closest = peer;
+            closestDist = peerDist;
+        }
+    }
+
+    return closest;
+}
+
+function updateTableRemove(peerId) {
+    var contains = false;
+    var indices = [];
+    for(var i = 0; i < 256; i++) {
+        if(peerTable[i]['id'] === peerId) {
+            indices.push(i);
+        }
+    }
+
+    if(indices.length === 0) {
+        return;
+    }
+
+    var idealIds = [];
+    for(var j in indices) {
+        var idx = indices[j];
+        var peer = peerTable[idx];
+        var idealPeerId = idealRoutingTable[idx];
+        idealIds.push(idealPeerId);
+        var closest = findClosestExclude(peerTable, idealPeerId, peer['id']);
+        
+        if(closest === undefined) {
+            delete peerTable[idx];
+            continue;
+        }
+
+        peerTable[idx] = closest;
+    }
+    return idealIds;
+}
+
+function onLeave() {
+    var msg = JSON.parse(msgJSON);
+    var data = JSON.parse(msg['data']);
+    var sig = msg['sig'];
+
+    // check have key
+    var peerId = data['id'];
+    if(!(peerId in keyTable)) {
+        return;
+    }
+
+    var peerPubkey = keyTable[peerId];
+
+    // verify key
+    var pubkeyHash = sha256(peerPubkey);
+    var peerIdMatch = peerId === pubkeyHash; // I think this is unecessary
+    var dataIntegrity = verify(peerPubkey, sig, msg['data']);
+
+    if(!(peerIdMatch && dataIntegrity)) {
+        return;
+    }
+
+    // check update routing table
+    delete keyTable[peerId];
+    var idealIds = updateTableRemove(peerId);
+    for(var idx in idealIds) {
+        var idealPeerId = idealIds[idx];
+        queryClosest(data['closest'], idealPeerId);
+    }
+
+    // propagate
+    floodReplay(msgJSON);
+}
+// Buffer.compare(b1, b2)
+// b1.compare(b2)
+// -1 first is less
+// 1 second is less
+
+function findClosest(searchTable, targetId) {
+    var targetIdBuf = Buffer.from(targetId, 'hex');
+
+    var closest = searchTable[0];
+    var closestIdBuf = Buffer.from(closest['id'], 'hex');
+    var closestDist = bufferXor(closestIdBuf, targetIdBuf);
+
+    for(var idx in searchTable) {
+        var peer = searchTable[idx];
+        var peerId = peer['id'];
+        var peerIdBuf = Buffer.from(peerId, 'hex');
+        var peerDist = bufferXor(peerIdBuf, targetIdBuf);
+        if(peerDist.compare(closestDist) < 0) {
+            closest = peer;
+            closestDist = peerDist;
+        }
+    }
+
+    return closest;
+}
+
+var peerCandidates = [];
 
 // find closest
 function queryClosest(peer, targetId) {
@@ -461,7 +517,7 @@ function queryClosest(peer, targetId) {
         port: globalConfig['ext']['port'],
         target: targetId,
     };
-
+    peerCandidates.push(peer['id']);
     send(peer, data);
 }
 
@@ -470,6 +526,13 @@ function onQueryClosest(msgJSON) {
     var msg = JSON.parse(msgJSON);
     var data = JSON.parse(msg['data']);
     var sig = msg['sig'];
+
+    var peerId = data['id'];
+    var peerPubkey = keyTable[peerId];
+
+    if(!peerPubkey || !verify(peerPubkey, sig, msg['data'])) {
+        return;
+    }
 
     var closest = findClosest(peerTable, data['target'], true);
     var pubkey = pair.public;
@@ -483,11 +546,7 @@ function onQueryClosest(msgJSON) {
     var targetIdBuf = Buffer.from(data['target'], 'hex');
     var closestDist = bufferXor(Buffer.from(closest['id'], 'hex'), targetIdBuf);
     var selfDist = bufferXor(Buffer.from(peerSelf['id'], 'hex'), targetIdBuf);
-
-    if(selfDist.compare(closestDist) < 0) {
-        closest = peerSelf;
-    }
-
+    
     var responseData = {
         type: 'response_closest',
         closest: closest,
@@ -495,29 +554,13 @@ function onQueryClosest(msgJSON) {
         self: false,
     };
 
-    if(closest === id) {
+    if(selfDist.compare(closestDist) < 0) {
+        responseData['closest'] = peerSelf;
         responseData['self'] = true;
     }
 
     var peer = {port: data['port'], ip: data['ip']};
     send(peer, responseData);
-}
-
-function updateTable(peer) {
-    for(var i = 0; i < 256; i++) {
-        var targetId = idealRoutingTable[i];
-        var currPeer = peerTable[i];
-        var targetIdBuf = Buffer.from(targetId, 'hex');
-        var currIdBuf = Buffer.from(currPeer['id'], 'hex');
-        var peerIdBuf = Buffer.from(peer['id'], 'hex');
-
-        var currDistance = bufferXor(targetIdBuf, currIdBuf);
-        var peerDistance = bufferXor(targetIdBuf, peerIdBuf);
-
-        if(peerDistance.compare(currDistance) < 0) {
-            peerTable[i] = peer;
-        }
-    }
 }
 
 function onResponseClosest(msgJSON) {
@@ -526,18 +569,32 @@ function onResponseClosest(msgJSON) {
     var data = JSON.parse(msg['data']);
     var sig = msg['sig'];
 
-    if(!verify(data['from']['pubkey'], sig, msg['data'])) {
+    if(!(data['from']['id'] in keyTable) || peerCandidates.indexOf(data['from']['id']) < 0) {
+        return;
+    }
+
+    var peerPubkey = keyTable[data['from']['id']];
+    var dataIntegrity = verify(peerPubkey, sig, msg['data']);
+    var keyMatch = data['from']['pubkey'] === peerPubkey;
+
+    if(!dataIntegrity || !keyMatch) {
         return;
     }
 
     // update routing table with peer who replied
     var peer = data['from'];
     updateTable(peer);
+    peerCandidates = peerCandidates.filter(function(peerId) {
+        return peerId != peer['id'];
+    });
 
-    // ask suggested peer for closest
+    // ask suggested closest for ideal closest
     if(!data['self']) {
-        var closest = data['closest'];
-        send(closest, responseData);
+        var idealMatches = wouldUpdateTable(closest);
+        for(var idx in idealMatches) {
+            var idealPeerId = idealMatches[idx];
+            queryClosest(closest, idealPeerId);
+        }
     }
 }
 
