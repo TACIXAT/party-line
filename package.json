@@ -8,6 +8,8 @@
   "license": "LICENSE_OF_MARQUE",
   "private": true,
   "dependencies": {
+    "blessed": "^0.1.81",
+    "keypair": "^1.0.1",
     "nat-pmp": "^1.0.0",
     "nat-upnp": "^1.1.1"
   }
