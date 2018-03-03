@@ -55,11 +55,13 @@ console.log(`id: ${id}`);
 console.log('generating ephemeral keys...');
 var dh = crypto.createDiffieHellman(1024);
 var pubkey = dh.generateKeys('hex');
-console.log(`complete!`);
+console.log(`initializing server...`);
 
 globalConfig['id'] = id;
 globalConfig['pair'] = pair;
 globalConfig['dh'] = dh;
+
+var chatMessages = new Array(512);
 
 // TODO: create image with fingerprint
 
@@ -117,7 +119,6 @@ function send(peer, data) {
     };
 
     var msgJSON = JSON.stringify(msg);
-    console.log(`sending: ${msgJSON}`)
     socket.send(msgJSON, peer['port'], peer['ip']);
 }
 
@@ -129,14 +130,14 @@ function flood(data) {
             continue;
         }
 
-        console.log('flood', peer, data);
         send(peer, data);
         sent.push(peer['id']);
     }
 }
 
 // join
-function join(ip, port, id) {
+function join(ip, port, peerId) {
+    console.log('sending join...');
     var socket = globalConfig['socket'];
     // connect to peer
     var pubkey = globalConfig['pair'].public;
@@ -147,9 +148,10 @@ function join(ip, port, id) {
         ip: globalConfig['ext']['ip'],
         port: globalConfig['ext']['port'],
         key: pubkey,
+        bsId: peerId,
     };
 
-    send({ip, port, id}, data);
+    send({ip, port, peerId}, data);
 
     // get peerId
     // get peer public key
@@ -163,13 +165,14 @@ function onJoin(msgJSON) {
     var sig = msg['sig'];
 
     if(!verify(data['key'], sig, msg['data'])) {
-        console.log('failed to verify join');
+        return;
+    }
+
+    if(data['bsId'] !== globalConfig['id']) {
         return;
     }
 
     // send verify
-    var socket = globalConfig['socket'];
-
     var pubkey = pair.public;
     var responseData = {
         type: 'verify',
@@ -185,11 +188,14 @@ function onJoin(msgJSON) {
         port: data['port'],
         ip: data['ip'],
     }
+
     send(peer, responseData);
+    globalConfig['verified'] = true;
 }
 
 // build node routing table
 function buildRoutingTable(seedTable, extra) {
+    console.log('building routing table...');
     var fullTable = seedTable;
     
     if(extra) {
@@ -202,22 +208,24 @@ function buildRoutingTable(seedTable, extra) {
         peerTable[i] = closestPeer;
     }
 
+    console.log('announcing to network...');
     announce();
 
+    console.log('querying peers for closest...');
     for(var i = 0; i < 256; i++) {
         var targetId = idealRoutingTable[i];
         var peer = peerTable[i];
         queryClosest(peer, targetId);
     }
+    console.log('happy chatting!');
 }
 
 function onVerify(msgJSON) {
-    console.log('onVerifiy');
     if(globalConfig['verified']) {
         return;
     }
 
-    console.log('verified', globalConfig['verified']);
+    console.log('received verify...');
 
     var msg = JSON.parse(msgJSON);
     var data = JSON.parse(msg['data']);
@@ -235,6 +243,9 @@ function onVerify(msgJSON) {
     var peerIdMatch = peerId === bootstrapId;
     var selfIdMatch = data['verify'] === globalConfig['id'];
     var dataIntegrity = verify(peerPubkey, sig, msg['data']);
+
+    console.log(peerId, bootstrapId);
+    console.log(peerIdMatch, selfIdMatch, dataIntegrity);
 
     if (peerIdMatch && selfIdMatch && dataIntegrity) {
         globalConfig['verified'] = true;
@@ -271,8 +282,6 @@ function announce() {
         port: globalConfig['ext']['port'],
         key: pubkey,
     };
-    console.log('flooding announce');
-    console.log(peerTable[0]);
     flood(data);
 }
 
@@ -384,6 +393,7 @@ function updateTable(peer) {
 
 // leave
 function leave() {
+    console.log('leaving...')
     var closest = findClosest(peerTable, globalConfig['id']);
     var pubkey = pair.public;
     var data = {
@@ -393,6 +403,7 @@ function leave() {
     };
 
     flood(data);
+    console.log('safe to exit (ctrl + c) now...');
 }
 
 function findClosestExclude(searchTable, targetId, excludeId) {
@@ -464,7 +475,7 @@ function updateTableRemove(peerId) {
     return idealIds;
 }
 
-function onLeave() {
+function onLeave(msgJSON) {
     var msg = JSON.parse(msgJSON);
     var data = JSON.parse(msg['data']);
     var sig = msg['sig'];
@@ -489,6 +500,19 @@ function onLeave() {
     // check update routing table
     delete keyTable[peerId];
     var idealIds = updateTableRemove(peerId);
+    
+    // closest is self and empty peer table :(
+    var tableEmpty = peerTable.filter(function(ea) { return ea != null }).length == 0;
+    if(data['closest']['id'] == globalConfig['id'] && tableEmpty) {
+        globalConfig['verified'] = false;
+        globalConfig['routingTableBuilt'] = false;
+        // we're alone, don't flood message or query for closest to yourself
+        console.log('no peers remaining :(');
+        console.log('bootstrap some new ones!');
+        console.log(globalConfig['bootstrapInfo']);
+        return;
+    }
+
     for(var idx in idealIds) {
         var idealPeerId = idealIds[idx];
         queryClosest(data['closest'], idealPeerId);
@@ -602,6 +626,12 @@ function onResponseClosest(msgJSON) {
         return;
     }
 
+    if(!globalConfig['routingTableBuilt']) {
+        globalConfig['routingTableBuilt'] = true;
+        console.log('peer table built...');
+        console.log('happy chatting!');
+    }
+
     // update routing table with peer who replied
     var peer = data['from'];
     updateTable(peer);
@@ -610,6 +640,7 @@ function onResponseClosest(msgJSON) {
     });
 
     // ask suggested closest for ideal closest
+    var closest = data['closest'];
     if(!data['self']) {
         var idealMatches = wouldUpdateTable(closest);
         for(var idx in idealMatches) {
@@ -632,7 +663,7 @@ function bootstrap(toks) {
 
     var ipEnc = match[1];
     var portEnc = match[2];
-    var id = match[3];
+    var peerId = match[3];
 
     var ip = [
         parseInt(ipEnc.substr(0, 2), 16),
@@ -645,9 +676,10 @@ function bootstrap(toks) {
 
     var port = parseInt(portEnc, 16);
     
-    globalConfig['bootstrapPeer'] = {ip, port, id};
+    globalConfig['bootstrapPeer'] = {ip, port, id: peerId};
+    console.log('bootstrapping to', globalConfig['bootstrapPeer']);
 
-    join(ip, port, id);
+    join(ip, port, peerId);
 
     return true;
 }
@@ -669,6 +701,7 @@ function handleCommand(command) {
     switch(cmd) {
         case '/bootstrap':
         case '/bs':
+        case '/join':
             return bootstrap(toks);
         case '/peerTable':
         case '/pt':
@@ -676,9 +709,36 @@ function handleCommand(command) {
         case '/keyTable':
         case '/kt':
             return dumpKeyTable();
+        case '/leave':
+        case '/exit':
+        case '/quit':
+            return leave();
         default:
-            return false;
+            break;
     }
+    
+    // kill attempts to message before initialized
+    if(!globalConfig['verified'] || !globalConfig['routingTableBuilt'])
+        return true;
+
+    return false;
+}
+
+chatMessagesReceived = {};
+
+function checkReceivedChat(chat) {
+    var peerId = chat['id'];
+    var chatTs = chat['ts'];
+    if(!(peerId in chatMessagesReceived)) {
+        chatMessagesReceived[peerId] = [];
+    }
+
+    if(chatMessagesReceived[peerId].indexOf(chatTs) < 0) {
+        chatMessagesReceived[peerId].push(chatTs);
+        return false;
+    } 
+      
+    return true;
 }
 
 function onChat(msgJSON) {
@@ -691,10 +751,27 @@ function onChat(msgJSON) {
         return;
     }
 
+    if(data['content'] == '' || checkReceivedChat(data)) {
+        return;
+    }
+
+    var chat = {
+        id: data['id'],
+        ts: data['ts'],
+        content: data['content'],
+        time: Date.now(),
+    }
+
+    // in case you ever become curious
+    // this is faster than unshift(chat), pop()
+    chatMessages.push(chat);
+    chatMessages.shift();
+
     console.log(data['content']);
 }
 
 function serverInit() {
+    console.log('setting up socket...');
     socket.on('error', (err) => {
         console.error(`server error:\n${err.stack}`);
         socket.close();
@@ -702,7 +779,6 @@ function serverInit() {
     });
 
     socket.on('message', (msgJSON, rinfo) => {
-        console.log(`server got: ${msgJSON} from ${rinfo.address}:${rinfo.port}`);
         // handle external message
         var msg = JSON.parse(msgJSON);
         var data = JSON.parse(msg['data']);
@@ -735,7 +811,6 @@ function serverInit() {
 
     socket.on('listening', () => {
         const address = socket.address();
-        console.log(`server listening ${address.address}:${address.port}`);
     });
 
     socket.bind(globalConfig['int']['port']);
@@ -752,15 +827,10 @@ function serverInit() {
     bootstrapInfo += globalConfig['id'];
 
     console.log(`bootstrap info: ${bootstrapInfo}`);
-    console.log(`(give your bootstrap info to people to connect to you)`);
+    globalConfig['bootstrapInfo'] = bootstrapInfo;
 
     stdin.addListener("data", function(d) {
-        // note:  d is an object, and when converted to a string it will
-        // end with a linefeed.  so we (rather crudely) account for that  
-        // with toString() and then trim() 
         var input = d.toString().trim();
-        console.log(`you entered: [${input}]`);
-
         if(!handleCommand(input)) {
             // handle userInput
             var data = {
@@ -772,6 +842,7 @@ function serverInit() {
             flood(data);
         }
     });
+    console.log(`bootstrap to a peer or have a peer bootstrap to you to get started`);
 }
 
 function killError(err) {
@@ -841,7 +912,7 @@ function holePunch(results) {
         local: false,
     }, function(err) {
         killError(err);
-        console.log('mapped');
+        console.log('mapped port...');
         init();
     });
 }
@@ -859,6 +930,7 @@ function unmap() {
 
 function init() {
     if(ip.address().match(/(^127\.)|(^192\.168\.)|(^10\.)|(^172\.1[6-9]\.)|(^172\.2[0-9]\.)|(^172\.3[0-1]\.)|(^::1$)|(^[fF][cCdD])/)) {
+        console.log('attempting upnp...')
         upnpClient.getMappings(function(err, results) {
             killError(err);
             var found = false;
@@ -870,7 +942,7 @@ function init() {
 
                 if(enabled && udp && description == 'Party line!' &&  privateIp == globalConfig['int']['ip']) {
                     found = true;
-                    console.log('found');
+                    console.log('found already open port');
                     globalConfig['int']['port'] = results[ea]['private']['port'];
                     globalConfig['ext']['port'] = results[ea]['public']['port'];
                     break;
@@ -878,7 +950,7 @@ function init() {
             } 
 
             if(!found) {
-                console.log('not found, mapping');
+                console.log('open port not found, mapping');
                 holePunch(results);
                 return;
             }
@@ -892,6 +964,7 @@ function init() {
         globalConfig['ext']['ip'] = ip.address();
         serverInit();
     }
+    // nat-pmp when the need arises, upnp seems to work everywhere I've tried
 }
 
 function listMappings() {

@@ -65,5 +65,7 @@ Yes, thank you. Strategic decisions like this will help us along our path to a b
 ## Thanksies
 
 @rickolous
+
 @morla10111
+
 mycroftiv
