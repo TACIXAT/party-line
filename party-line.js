@@ -152,6 +152,10 @@ function serverInit() {
 
     socket.on('message', (msgJSON, rinfo) => {
         // handle external message
+        if(!utils.validateMsg(msgJSON, ['type'])) {
+            return;
+        }
+
         var msg = JSON.parse(msgJSON);
         var data = JSON.parse(msg['data']);
         switch(data['type']) {
@@ -211,6 +215,7 @@ function serverInit() {
                 ts: Date.now(),
                 content: input,
             }
+            utils.addChat(data);
             net.flood(globalConfig['pair'], data);
         }
     });

@@ -232,5 +232,69 @@ module.exports = function(globalConfig, net) {
         return true;
     }
 
+    module.validateMsg = function(msgJSON, dataKeys) {
+        var msgKeys = ['sig', 'data'];
+        if(!module.isJSON(msgJSON)) {
+            console.log('discarding', msgJSON.toString());
+            return false;
+        }
+
+        var msg = JSON.parse(msgJSON);
+        for(var idx in msgKeys) {
+            var key = msgKeys[idx];
+            if(!(key in msg)) {
+            console.log('discarding', msgJSON.toString());
+                return false;
+            }
+        }
+
+        if(!module.isJSON(msg['data'])) {
+            console.log('discarding', msgJSON.toString());
+            return false;
+        }
+
+        var data = JSON.parse(msg['data']);
+        for(var idx in dataKeys) {
+            var key = dataKeys[idx];
+            if(!(key in data)) {
+                console.log('discarding', msgJSON.toString());
+                return false;
+            }   
+        }
+
+        return true;
+    }
+
+    module.isJSON = function(item) {
+        item = typeof item !== "string"
+            ? JSON.stringify(item)
+            : item;
+
+        try {
+            item = JSON.parse(item);
+        } catch (e) {
+            return false;
+        }
+
+        if (typeof item === "object" && item !== null) {
+            return true;
+        }
+
+        return false;
+    }
+
+    module.addChat = function(data) {
+        var chat = {
+            id: data['id'],
+            ts: data['ts'],
+            content: data['content'],
+            time: Date.now(),
+        }
+
+        globalConfig['chatMessages'].push(chat);
+        globalConfig['chatMessages'].shift();
+        console.log(`${data['id'].substr(64-6, 6)}: ${data['content']}`);
+    }
+
     return module;
 }

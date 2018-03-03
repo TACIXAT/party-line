@@ -66,6 +66,10 @@ module.exports = function(globalConfig) {
     }
 
     module.onJoin = function(pair, msgJSON) {
+        if(!utils.validateMsg(msgJSON, ['key', 'bsId', 'port', 'ip'])) {
+            return;
+        }
+
         var msg = JSON.parse(msgJSON);
         var data = JSON.parse(msg['data']);
         var sig = msg['sig'];
@@ -101,6 +105,10 @@ module.exports = function(globalConfig) {
 
     module.onVerify = function(pair, msgJSON) {
         if(globalConfig['verified']) {
+            return;
+        }
+
+        if(!utils.validateMsg(msgJSON, ['ip', 'port', 'key', 'verify', 'peerTable', 'keyTable'])) {
             return;
         }
 
@@ -179,6 +187,10 @@ module.exports = function(globalConfig) {
     }
 
     module.onAnnounce = function(pair, msgJSON) {
+        if(!utils.validateMsg(msgJSON, ['key', 'id', 'ip', 'port'])) {
+            return;
+        }
+
         var msg = JSON.parse(msgJSON);
         var data = JSON.parse(msg['data']);
         var sig = msg['sig'];
@@ -237,6 +249,10 @@ module.exports = function(globalConfig) {
     }
 
     module.onLeave = function(pair, msgJSON) {
+        if(!utils.validateMsg(msgJSON, ['id', 'closest'])) {
+            return;
+        }
+
         var msg = JSON.parse(msgJSON);
         var data = JSON.parse(msg['data']);
         var sig = msg['sig'];
@@ -298,6 +314,10 @@ module.exports = function(globalConfig) {
     }
 
     module.onQueryClosest = function(pair, msgJSON) {
+        if(!utils.validateMsg(msgJSON, ['id', 'target', 'port', 'ip'])) {
+            return;
+        }
+
         // update peerTable
         var msg = JSON.parse(msgJSON);
         var data = JSON.parse(msg['data']);
@@ -343,6 +363,10 @@ module.exports = function(globalConfig) {
     }
 
     module.onResponseClosest = function(pair, msgJSON) {
+        if(!utils.validateMsg(msgJSON, ['from', 'closest', 'self'])) {
+            return;
+        }
+
         // update peerTable
         var msg = JSON.parse(msgJSON);
         var data = JSON.parse(msg['data']);
@@ -385,6 +409,10 @@ module.exports = function(globalConfig) {
     }
 
     module.onChat = function(msgJSON) {
+        if(!utils.validateMsg(msgJSON, ['content', 'id', 'ts'])) {
+            return;
+        }
+
         var msg = JSON.parse(msgJSON);
         var data = JSON.parse(msg['data']);
         var sig = msg['sig'];
@@ -398,19 +426,7 @@ module.exports = function(globalConfig) {
             return;
         }
 
-        var chat = {
-            id: data['id'],
-            ts: data['ts'],
-            content: data['content'],
-            time: Date.now(),
-        }
-
-        // in case you ever become curious
-        // this is faster than unshift(chat), pop()
-        globalConfig['chatMessages'].push(chat);
-        globalConfig['chatMessages'].shift();
-
-        console.log(data['content']);
+        utils.addChat(data);
         module.floodReplay(msgJSON);
     }
 
