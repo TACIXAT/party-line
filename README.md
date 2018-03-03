@@ -36,7 +36,7 @@ It's full of people like you.
 
 **Are Party Lines secure?**
 
-Party Lines rely on you trusting all individuals participating in that Party Line. Don't invite a loose lipped leaker to your parties. Other than that they're pretty legit. Speak freely about your plots and schemes, share your rarest memes, send noodles, etc.
+Party Lines rely on you trusting all individuals participating in that Party Line. Don't invite a loose lipped leaker to your parties. Other than that they're pretty legit. Speak freely about your plots and schemes, send noodles, share your rarest memes.
 
 **When's the ICO?**
 
@@ -46,9 +46,9 @@ Digital "assets" that lack monetary policy will never be realized as mainstream 
 
 That's just a passthrough gimmick for spending money in USD. You also pay taxes in USD. Thanks for your continued support of the one true currency.
 
-**Does this use blockchain?**
+**Is this the blockchain?**
 
-No. It has no reason to.
+Yea, fuck it, why not?
 
 **Is this Tor?**
 

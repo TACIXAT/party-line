@@ -125,10 +125,11 @@ function flood(data) {
     var sent = [];
     for(var i = 0; i < 256; i++) {
         var peer = peerTable[i];
-        if(send.indexOf(peer['id'] > -1)) {
+        if(!peer || sent.indexOf(peer['id']) > -1) {
             continue;
         }
 
+        console.log('flood', peer, data);
         send(peer, data);
         sent.push(peer['id']);
     }
@@ -161,7 +162,7 @@ function onJoin(msgJSON) {
     var data = JSON.parse(msg['data']);
     var sig = msg['sig'];
 
-    if(!verify(data['pubkey'], sig, msg['data'])) {
+    if(!verify(data['key'], sig, msg['data'])) {
         console.log('failed to verify join');
         return;
     }
@@ -197,7 +198,7 @@ function buildRoutingTable(seedTable, extra) {
 
     for(var i = 0; i < 256; i++) {
         var idealPeerId = idealRoutingTable[i];
-        var closestPeer = findClosest(fullTable, idealPeerId);
+        var closestPeer = findClosestExclude(fullTable, idealPeerId, null);
         peerTable[i] = closestPeer;
     }
 
@@ -211,9 +212,12 @@ function buildRoutingTable(seedTable, extra) {
 }
 
 function onVerify(msgJSON) {
+    console.log('onVerifiy');
     if(globalConfig['verified']) {
         return;
     }
+
+    console.log('verified', globalConfig['verified']);
 
     var msg = JSON.parse(msgJSON);
     var data = JSON.parse(msg['data']);
@@ -221,7 +225,7 @@ function onVerify(msgJSON) {
 
     var peerIp = data['ip'];
     var peerPort = data['port'];
-    var peerPubkey = data['pubkey'];
+    var peerPubkey = data['key'];
 
     var bootstrapIp = globalConfig['bootstrapPeer']['ip'];
     var bootstrapPort = globalConfig['bootstrapPeer']['port'];
@@ -241,7 +245,7 @@ function onVerify(msgJSON) {
 
     globalConfig['bootstrapPeer']['ip'] = peerIp;
     globalConfig['bootstrapPeer']['port'] = peerPort;
-    globalConfig['bootstrapPeer']['pubkey'] = peerPubkey;
+    globalConfig['bootstrapPeer']['key'] = peerPubkey;
 
     var peerTable = data['peerTable'];
 
@@ -267,7 +271,8 @@ function announce() {
         port: globalConfig['ext']['port'],
         key: pubkey,
     };
-
+    console.log('flooding announce');
+    console.log(peerTable[0]);
     flood(data);
 }
 
@@ -275,7 +280,7 @@ function floodReplay(data) {
     var sent = [];
     for(var i = 0; i < 256; i++) {
         var peer = peerTable[i];
-        if(peer['id'] in sent) {
+        if(!peer || sent.indexOf(peer['id']) > -1) {
             continue;
         }
 
@@ -284,7 +289,7 @@ function floodReplay(data) {
     }
 }
 
-function onAnnounce() {
+function onAnnounce(msgJSON) {
     var msg = JSON.parse(msgJSON);
     var data = JSON.parse(msg['data']);
     var sig = msg['sig'];
@@ -329,6 +334,12 @@ function wouldUpdateTable(peer) {
     for(var i = 0; i < 256; i++) {
         var targetId = idealRoutingTable[i];
         var currPeer = peerTable[i];
+        
+        if(currPeer === null || currPeer === undefined) {
+            idealMatches.push(targetId);
+            continue;
+        }
+        
         var targetIdBuf = Buffer.from(targetId, 'hex');
         var currIdBuf = Buffer.from(currPeer['id'], 'hex');
         var peerIdBuf = Buffer.from(peer['id'], 'hex');
@@ -348,6 +359,13 @@ function updateTable(peer) {
     for(var i = 0; i < 256; i++) {
         var targetId = idealRoutingTable[i];
         var currPeer = peerTable[i];
+
+        if(currPeer === null || currPeer === undefined) {
+            idealMatches.push(targetId);
+            peerTable[i] = peer;
+            continue;
+        }
+
         var targetIdBuf = Buffer.from(targetId, 'hex');
         var currIdBuf = Buffer.from(currPeer['id'], 'hex');
         var peerIdBuf = Buffer.from(peer['id'], 'hex');
@@ -382,14 +400,14 @@ function findClosestExclude(searchTable, targetId, excludeId) {
 
     var closest;
     for(var idx in searchTable) {
-        if(searchTable[idx]['id'] == excludeId) {
+        if(!searchTable[idx] || searchTable[idx]['id'] == excludeId) {
             continue;
         }
         closest = searchTable[idx];
         break;
     }
 
-    if(closest === undefined) {
+    if(closest === undefined || closest === null) {
         return undefined;
     }
 
@@ -398,12 +416,12 @@ function findClosestExclude(searchTable, targetId, excludeId) {
 
     for(var idx in searchTable) {
         var peer = searchTable[idx];
-        var peerId = peer['id'];
 
-        if(peerId === excludeId) {
+        if(!peer || peer['id'] === excludeId) {
             continue;
         }
 
+        var peerId = peer['id'];
         var peerIdBuf = Buffer.from(peerId, 'hex');
         var peerDist = bufferXor(peerIdBuf, targetIdBuf);
         if(peerDist.compare(closestDist) < 0) {
@@ -534,7 +552,7 @@ function onQueryClosest(msgJSON) {
         return;
     }
 
-    var closest = findClosest(peerTable, data['target'], true);
+    var closest = findClosestExclude(peerTable, data['target'], null);
     var pubkey = pair.public;
     var peerSelf = {
         id: globalConfig['id'],
@@ -544,8 +562,11 @@ function onQueryClosest(msgJSON) {
     };
 
     var targetIdBuf = Buffer.from(data['target'], 'hex');
-    var closestDist = bufferXor(Buffer.from(closest['id'], 'hex'), targetIdBuf);
     var selfDist = bufferXor(Buffer.from(peerSelf['id'], 'hex'), targetIdBuf);
+    var closestDist = selfDist;
+    if(closest) {
+        closestDist = bufferXor(Buffer.from(closest['id'], 'hex'), targetIdBuf);
+    } 
     
     var responseData = {
         type: 'response_closest',
@@ -554,7 +575,7 @@ function onQueryClosest(msgJSON) {
         self: false,
     };
 
-    if(selfDist.compare(closestDist) < 0) {
+    if(!closest || selfDist.compare(closestDist) < 0) {
         responseData['closest'] = peerSelf;
         responseData['self'] = true;
     }
@@ -575,7 +596,7 @@ function onResponseClosest(msgJSON) {
 
     var peerPubkey = keyTable[data['from']['id']];
     var dataIntegrity = verify(peerPubkey, sig, msg['data']);
-    var keyMatch = data['from']['pubkey'] === peerPubkey;
+    var keyMatch = data['from']['key'] === peerPubkey;
 
     if(!dataIntegrity || !keyMatch) {
         return;
@@ -631,6 +652,16 @@ function bootstrap(toks) {
     return true;
 }
 
+function dumpPeerTable() {
+    console.log(peerTable);
+    return true;
+}
+
+function dumpKeyTable() {
+    console.log(keyTable);
+    return true;
+}
+
 function handleCommand(command) {
     var toks = command.split(' ');
     var cmd = toks[0];
@@ -639,9 +670,28 @@ function handleCommand(command) {
         case '/bootstrap':
         case '/bs':
             return bootstrap(toks);
+        case '/peerTable':
+        case '/pt':
+            return dumpPeerTable();
+        case '/keyTable':
+        case '/kt':
+            return dumpKeyTable();
         default:
             return false;
     }
+}
+
+function onChat(msgJSON) {
+    var msg = JSON.parse(msgJSON);
+    var data = JSON.parse(msg['data']);
+    var sig = msg['sig'];
+
+    var peerId = data['id'];
+    if(!(peerId in keyTable) || !verify(keyTable[peerId], sig, msg['data'])) {
+        return;
+    }
+
+    console.log(data['content']);
 }
 
 function serverInit() {
@@ -713,14 +763,13 @@ function serverInit() {
 
         if(!handleCommand(input)) {
             // handle userInput
-            for(idx in peerTable) {
-                var peer = peerTable[idx];
-                var data = {
-                    type: 'chat',
-                    msg: input,
-                }
-                send(peer, data);
+            var data = {
+                type: 'chat',
+                id: globalConfig['id'],
+                ts: Date.now(),
+                content: input,
             }
+            flood(data);
         }
     });
 }
