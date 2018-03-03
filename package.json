@@ -1,0 +1,14 @@
+{
+  "name": "partyline",
+  "version": "1.0.0",
+  "description": "peer to peer chat",
+  "main": "partyline.js",
+  "repository": "git@github.com:douggard/party-line.git",
+  "author": "TACIXAT",
+  "license": "LICENSE_OF_MARQUE",
+  "private": true,
+  "dependencies": {
+    "nat-pmp": "^1.0.0",
+    "nat-upnp": "^1.1.1"
+  }
+}
