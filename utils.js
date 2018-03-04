@@ -34,39 +34,39 @@ module.exports = function(globalConfig, net) {
 
     module.calculateIdealRoutingTable = function(id) {
         var idealPeerList = [];
+        var idBuf = Buffer.from(id, 'hex');
         for(var i = 0; i < 256; i++) {
             var powerBuf = Buffer.from((2**i).toString(16).padStart(64, '0'), 'hex');
             var idealPeer = module.bufferXor(id, powerBuf);
-            idealPeerList.push(idealPeer);
+            idealPeerList.push(idealPeer.toString('hex'));
         }
         return idealPeerList;
     }
 
-    // build node routing table
-    module.buildRoutingTable = function(pair, seedTable, extra) {
-        console.log('building routing table...');
-        var fullTable = seedTable;
-        
-        if(extra) {
-            fullTable = seedTable.concat(extra);
-        }
+    module.delayQueryClosest = function(pair, peer, targetId) {
+        net.queryClosest(pair, peer, targetId);
+    }
 
+    // build node routing table
+    module.buildRoutingTable = function(pair) {
+        console.log('building routing table...');
         for(var i = 0; i < 256; i++) {
-            var idealPeerId = globalConfig['idealRoutingTable'][i];
-            var closestPeer = module.findClosestExclude(fullTable, idealPeerId, null);
-            globalConfig['peerTable'][i] = closestPeer;
+            globalConfig['peerTable'][i] = globalConfig['bootstrapPeer'];
         }
 
         console.log('announcing to network...');
         net.announce(pair);
 
         console.log('querying peers for closest...');
+        var peer = globalConfig['bootstrapPeer'];
         for(var i = 0; i < 256; i++) {
             var targetId = globalConfig['idealRoutingTable'][i];
-            var peer = globalConfig['peerTable'][i];
-            net.queryClosest(pair, peer, targetId);
+            setTimeout(module.delayQueryClosest.bind(undefined, pair, peer, targetId), 20 * (i+1));
         }
-        console.log('happy chatting!');
+
+        setTimeout(function() {
+            console.log('happy chatting!');
+        }, 20 * 258);
     }
 
     module.wouldUpdateTable = function(peer) {
@@ -122,12 +122,12 @@ module.exports = function(globalConfig, net) {
         return idealMatches;
     }
 
-    module.findClosestExclude = function(searchTable, targetId, excludeId) {
+    module.findClosestExclude = function(searchTable, targetId, [excludeIds]) {
         var targetIdBuf = Buffer.from(targetId, 'hex');
 
         var closest;
         for(var idx in searchTable) {
-            if(!searchTable[idx] || searchTable[idx]['id'] == excludeId) {
+            if(!searchTable[idx] || excludeIds.indexOf(searchTable[idx]['id']) > -1) {
                 continue;
             }
             closest = searchTable[idx];
@@ -144,7 +144,7 @@ module.exports = function(globalConfig, net) {
         for(var idx in searchTable) {
             var peer = searchTable[idx];
 
-            if(!peer || peer['id'] === excludeId) {
+            if(!peer || excludeIds.indexOf(peer['id']) > -1) {
                 continue;
             }
 
@@ -179,7 +179,7 @@ module.exports = function(globalConfig, net) {
             var peer = globalConfig['peerTable'][idx];
             var idealPeerId = globalConfig['idealRoutingTable'][idx];
             idealIds.push(idealPeerId);
-            var closest = module.findClosestExclude(globalConfig['peerTable'], idealPeerId, peer['id']);
+            var closest = module.findClosestExclude(globalConfig['peerTable'], idealPeerId, [peer['id']]);
             
             if(closest === undefined) {
                 delete globalConfig['peerTable'][idx];

@@ -75,10 +75,12 @@ module.exports = function(globalConfig) {
         var sig = msg['sig'];
 
         if(!utils.verify(data['key'], sig, msg['data'])) {
+            console.log('verify failed');
             return;
         }
 
         if(data['bsId'] !== globalConfig['id']) {
+            console.log('bsId no match', bsId, globalConfig['id']);
             return;
         }
 
@@ -90,15 +92,14 @@ module.exports = function(globalConfig) {
             port: globalConfig['ext']['port'],
             key: pubkey,
             verify: utils.sha256(data['key']),
-            peerTable: globalConfig['peerTable'],
-            keyTable: globalConfig['keyTable'],
         };
         
         var peer = {
             port: data['port'],
             ip: data['ip'],
         }
-
+ 
+        console.log('sending verify...');
         module.send(peer, pair, responseData);
         globalConfig['verified'] = true;
     }
@@ -108,7 +109,7 @@ module.exports = function(globalConfig) {
             return;
         }
 
-        if(!utils.validateMsg(msgJSON, ['ip', 'port', 'key', 'verify', 'peerTable', 'keyTable'])) {
+        if(!utils.validateMsg(msgJSON, ['ip', 'port', 'key', 'verify'])) {
             return;
         }
 
@@ -131,9 +132,6 @@ module.exports = function(globalConfig) {
         var selfIdMatch = data['verify'] === globalConfig['id'];
         var dataIntegrity = utils.verify(peerPubkey, sig, msg['data']);
 
-        console.log(peerId, bootstrapId);
-        console.log(peerIdMatch, selfIdMatch, dataIntegrity);
-
         if (peerIdMatch && selfIdMatch && dataIntegrity) {
             globalConfig['verified'] = true;
         } else {
@@ -145,17 +143,9 @@ module.exports = function(globalConfig) {
         globalConfig['bootstrapPeer']['port'] = peerPort;
         globalConfig['bootstrapPeer']['key'] = peerPubkey;
 
-        var peerTable = data['peerTable'];
-
-        globalConfig['keyTable'] = data['keyTable'];
-        for(var keyId in globalConfig['keyTable']) {
-            if(keyId != utils.sha256(globalConfig['keyTable'][keyId])) {
-                delete globalConfig['keyTable'][keyId];
-            }
-        }
         globalConfig['keyTable'][peerId] = peerPubkey;
 
-        utils.buildRoutingTable(pair, peerTable, globalConfig['bootstrapPeer']);
+        utils.buildRoutingTable(pair);
         globalConfig['routingTableBuilt'] = true;
     }
 
@@ -223,78 +213,9 @@ module.exports = function(globalConfig) {
         var idealMatches = utils.wouldUpdateTable(peer);
         for(var idx in idealMatches) {
             var idealPeerId = idealMatches[idx];
-            module.queryClosest(pair, peer, idealPeerId);
+            setTimeout(utils.delayQueryClosest.bind(undefined, pair, peer, idealPeerId), 20 * (idx+1));
         }
-
-        // propagate
-        module.floodReplay(msgJSON);
-    }
-
-    // leave
-    module.leave = function(pair) {
-        console.log('leaving...')
-        var closest = utils.findClosest(globalConfig['peerTable'], globalConfig['id']);
-        if(closest) {
-            var pubkey = pair.public;
-            var data = {
-                type: 'leave',
-                id: globalConfig['id'],
-                closest: closest,
-            };
-
-            module.flood(pair, data);
-        }
-        console.log('safe to exit (ctrl + c) now...');
-        return true;
-    }
-
-    module.onLeave = function(pair, msgJSON) {
-        if(!utils.validateMsg(msgJSON, ['id', 'closest'])) {
-            return;
-        }
-
-        var msg = JSON.parse(msgJSON);
-        var data = JSON.parse(msg['data']);
-        var sig = msg['sig'];
-
-        // check have key
-        var peerId = data['id'];
-        if(!(peerId in globalConfig['keyTable'])) {
-            return;
-        }
-
-        var peerPubkey = globalConfig['keyTable'][peerId];
-
-        // verify key
-        var pubkeyHash = utils.sha256(peerPubkey);
-        var peerIdMatch = peerId === pubkeyHash; // I think this is unecessary
-        var dataIntegrity = utils.verify(peerPubkey, sig, msg['data']);
-
-        if(!(peerIdMatch && dataIntegrity)) {
-            return;
-        }
-
-        // check update routing table
-        delete globalConfig['keyTable'][peerId];
-        var idealIds = utils.updateTableRemove(peerId);
         
-        // closest is self and empty peer table :(
-        var tableEmpty = globalConfig['peerTable'].filter(function(ea) { return ea != null }).length == 0;
-        if(data['closest']['id'] == globalConfig['id'] && tableEmpty) {
-            globalConfig['verified'] = false;
-            globalConfig['routingTableBuilt'] = false;
-            // we're alone, don't flood message or query for closest to yourself
-            console.log('no peers remaining :(');
-            console.log('bootstrap some new ones!');
-            console.log(globalConfig['bootstrapInfo']);
-            return;
-        }
-
-        for(var idx in idealIds) {
-            var idealPeerId = idealIds[idx];
-            module.queryClosest(pair, data['closest'], idealPeerId);
-        }
-
         // propagate
         module.floodReplay(msgJSON);
     }
@@ -310,6 +231,10 @@ module.exports = function(globalConfig) {
             target: targetId,
         };
         globalConfig['peerCandidates'].push(peer['id']);
+        if(utils.sha256(peer['key']) !== peer['id']) {
+            return;
+        }
+        globalConfig['keyTable'][peer['id']] = peer['key'];
         module.send(peer, pair, data);
     }
 
@@ -330,7 +255,7 @@ module.exports = function(globalConfig) {
             return;
         }
 
-        var closest = utils.findClosestExclude(globalConfig['peerTable'], data['target'], null);
+        var closest = utils.findClosestExclude(globalConfig['peerTable'], data['target'], [data['id']]);
         var pubkey = pair.public;
         var peerSelf = {
             id: globalConfig['id'],
@@ -408,6 +333,75 @@ module.exports = function(globalConfig) {
         }
     }
 
+    // leave
+    module.leave = function(pair) {
+        console.log('leaving...')
+        var closest = utils.findClosest(globalConfig['peerTable'], globalConfig['id']);
+        if(closest) {
+            var pubkey = pair.public;
+            var data = {
+                type: 'leave',
+                id: globalConfig['id'],
+                closest: closest,
+            };
+
+            module.flood(pair, data);
+        }
+        console.log('safe to exit (ctrl + c) now...');
+        return true;
+    }
+
+    module.onLeave = function(pair, msgJSON) {
+        if(!utils.validateMsg(msgJSON, ['id', 'closest'])) {
+            return;
+        }
+
+        var msg = JSON.parse(msgJSON);
+        var data = JSON.parse(msg['data']);
+        var sig = msg['sig'];
+
+        // check have key
+        var peerId = data['id'];
+        if(!(peerId in globalConfig['keyTable'])) {
+            return;
+        }
+
+        var peerPubkey = globalConfig['keyTable'][peerId];
+
+        // verify key
+        var pubkeyHash = utils.sha256(peerPubkey);
+        var peerIdMatch = peerId === pubkeyHash; // I think this is unecessary
+        var dataIntegrity = utils.verify(peerPubkey, sig, msg['data']);
+
+        if(!(peerIdMatch && dataIntegrity)) {
+            return;
+        }
+
+        // check update routing table
+        delete globalConfig['keyTable'][peerId];
+        var idealIds = utils.updateTableRemove(peerId);
+        
+        // closest is self and empty peer table :(
+        var tableEmpty = globalConfig['peerTable'].filter(function(ea) { return ea != null }).length == 0;
+        if(data['closest']['id'] == globalConfig['id'] && tableEmpty) {
+            globalConfig['verified'] = false;
+            globalConfig['routingTableBuilt'] = false;
+            // we're alone, don't flood message or query for closest to yourself
+            console.log('no peers remaining :(');
+            console.log('bootstrap some new ones!');
+            console.log(globalConfig['bootstrapInfo']);
+            return;
+        }
+
+        for(var idx in idealIds) {
+            var idealPeerId = idealIds[idx];
+            module.queryClosest(pair, data['closest'], idealPeerId);
+        }
+
+        // propagate
+        module.floodReplay(msgJSON);
+    }
+
     module.onChat = function(msgJSON) {
         if(!utils.validateMsg(msgJSON, ['content', 'id', 'ts'])) {
             return;
@@ -418,9 +412,9 @@ module.exports = function(globalConfig) {
         var sig = msg['sig'];
 
         var peerId = data['id'];
-        if(!(peerId in globalConfig['keyTable']) || !utils.verify(globalConfig['keyTable'][peerId], sig, msg['data'])) {
-            return;
-        }
+        // if(!(peerId in globalConfig['keyTable']) || !utils.verify(globalConfig['keyTable'][peerId], sig, msg['data'])) {
+        //     return;
+        // }
 
         if(data['content'] == '' || utils.checkReceivedChat(data)) {
             return;

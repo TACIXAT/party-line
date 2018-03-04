@@ -101,7 +101,9 @@ function bootstrap(toks) {
 }
 
 function dumpPeerTable() {
-    console.log(globalConfig['peerTable']);
+    console.log(globalConfig['peerTable'][0]);
+    console.log(globalConfig['peerTable'][128]);
+    console.log(globalConfig['peerTable'][255]);
     return true;
 }
 
@@ -215,7 +217,7 @@ function serverInit() {
                 ts: Date.now(),
                 content: input,
             }
-            utils.addChat(data);
+            // utils.addChat(data);
             net.flood(globalConfig['pair'], data);
         }
     });
