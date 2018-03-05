@@ -1,8 +1,26 @@
 var Utils = require('./utils.js');
+var Interface = require('./interface.js');
 
-module.exports = function(globalConfig) {
-    var utils = new Utils(globalConfig, module);
+module.exports = function(globalConfig, handleCommand) {
+    var ui = new Interface(globalConfig);
+    ui.setEnterCallback(function(ch, key) {
+        var msg = this.value.trim();
+        if(!handleCommand(msg)) {
+            // handle userInput
+            var data = {
+                type: 'chat',
+                id: globalConfig['id'],
+                ts: Date.now(),
+                content: msg,
+            }
+            // utils.addChat(data);
+            module.flood(globalConfig['pair'], data);
+        }
+        this.clearValue();
+    });
+    module.ui = ui;
 
+    var utils = new Utils(globalConfig, module, ui);
     module.utils = utils;
 
     module.testSelfConnection = function() {
@@ -43,7 +61,7 @@ module.exports = function(globalConfig) {
 
     // join
     module.join = function(pair, ip, port, peerId) {
-        console.log('sending join...');
+        ui.logMsg('sending join...');
         var socket = globalConfig['socket'];
         // connect to peer
         var pubkey = pair.public;
@@ -75,12 +93,12 @@ module.exports = function(globalConfig) {
         var sig = msg['sig'];
 
         if(!utils.verify(data['key'], sig, msg['data'])) {
-            console.log('verify failed');
+            ui.logMsg('verify failed');
             return;
         }
 
         if(data['bsId'] !== globalConfig['id']) {
-            console.log('bsId no match', bsId, globalConfig['id']);
+            ui.logMsg('bsId no match', bsId, globalConfig['id']);
             return;
         }
 
@@ -99,7 +117,7 @@ module.exports = function(globalConfig) {
             ip: data['ip'],
         }
  
-        console.log('sending verify...');
+        ui.logMsg('sending verify...');
         module.send(peer, pair, responseData);
         globalConfig['verified'] = true;
     }
@@ -113,7 +131,7 @@ module.exports = function(globalConfig) {
             return;
         }
 
-        console.log('received verify...');
+        ui.logMsg('received verify...');
 
         var msg = JSON.parse(msgJSON);
         var data = JSON.parse(msg['data']);
@@ -249,11 +267,11 @@ module.exports = function(globalConfig) {
         var sig = msg['sig'];
 
         var peerId = data['id'];
-        var peerPubkey = globalConfig['keyTable'][peerId];
+        // var peerPubkey = globalConfig['keyTable'][peerId];
 
-        if(!peerPubkey || !utils.verify(peerPubkey, sig, msg['data'])) {
-            return;
-        }
+        // if(!peerPubkey || !utils.verify(peerPubkey, sig, msg['data'])) {
+        //     return;
+        // }
 
         var closest = utils.findClosestExclude(globalConfig['peerTable'], data['target'], [data['id']]);
         var pubkey = pair.public;
@@ -311,8 +329,8 @@ module.exports = function(globalConfig) {
 
         if(!globalConfig['routingTableBuilt']) {
             globalConfig['routingTableBuilt'] = true;
-            console.log('peer table built...');
-            console.log('happy chatting!');
+            ui.logMsg('peer table built...');
+            ui.logMsg('happy chatting!');
         }
 
         // update routing table with peer who replied
@@ -335,7 +353,7 @@ module.exports = function(globalConfig) {
 
     // leave
     module.leave = function(pair) {
-        console.log('leaving...')
+        ui.logMsg('leaving...')
         var closest = utils.findClosest(globalConfig['peerTable'], globalConfig['id']);
         if(closest) {
             var pubkey = pair.public;
@@ -347,7 +365,7 @@ module.exports = function(globalConfig) {
 
             module.flood(pair, data);
         }
-        console.log('safe to exit (ctrl + c) now...');
+        ui.logMsg('safe to exit (ctrl + c) now...');
         return true;
     }
 
@@ -387,9 +405,9 @@ module.exports = function(globalConfig) {
             globalConfig['verified'] = false;
             globalConfig['routingTableBuilt'] = false;
             // we're alone, don't flood message or query for closest to yourself
-            console.log('no peers remaining :(');
-            console.log('bootstrap some new ones!');
-            console.log(globalConfig['bootstrapInfo']);
+            ui.logMsg('no peers remaining :(');
+            ui.logMsg('bootstrap some new ones!');
+            ui.logMsg(globalConfig['bootstrapInfo']);
             return;
         }
 

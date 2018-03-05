@@ -7,62 +7,7 @@ var natupnp = require('nat-upnp');
 
 var Net = require('./network.js');
 var Utils = require('./utils.js');
-
-var upnpClient = natupnp.createClient();
-var socket = dgram.createSocket('udp4');
-
-var globalConfig = {
-    int: {
-        ip: ip.address(),
-        port: null,
-    }, 
-    ext: {
-        ip: null,
-        port: null,
-    },
-    verified: false,
-    routingTableBuilt: false,
-    bootstrapPeer: null,
-}
-
-var net = new Net(globalConfig);
-var utils = net.utils;
-
-var stdin = process.openStdin();
-globalConfig['peerTable'] = new Array(256);
-globalConfig['keyTable'] = {};
-
-console.log('generating keypair...');
-var pair = keypair({bits: 2048}); 
-var id = utils.sha256(pair.public);
-console.log(`id: ${id}`);
-
-console.log('generating ephemeral keys...');
-// var dh = crypto.createDiffieHellman(1024);
-// var pubkey = dh.generateKeys('hex');
-console.log(`initializing server...`);
-
-globalConfig['id'] = id;
-globalConfig['pair'] = pair;
-// globalConfig['dh'] = dh;
-
-globalConfig['idealRoutingTable'] = utils.calculateIdealRoutingTable(globalConfig['id']);
-globalConfig['peerCandidates'] = [];
-globalConfig['chatMessages'] = new Array(512);
-globalConfig['chatMessagesReceived'] = {};
-
-// TODO: create image with fingerprint
-
-// console.log('generating keys...');
-// var dh2 = crypto.createDiffieHellman(dh.getPrime(), dh.getGenerator());
-// var pubKey2 = dh2.generateKeys('hex');
-// console.log(`pubkey ${pubKey2}`);
-// // id is sha512 of public key
-// var fingerprint2 = crypto.createHash('sha256').update(Buffer.from(pubKey2, 'hex')).digest('hex');
-// console.log(`fingerprint: ${fingerprint2}`);
-
-// dh2.computeSecret(pubKey, 'hex');
-// var sessionSecret = dh.computeSecret(pubKey2, 'hex');
+var Interface = require('./interface.js');
 
 function bootstrap(toks) {
     var pair = globalConfig['pair'];
@@ -93,7 +38,7 @@ function bootstrap(toks) {
     var port = parseInt(portEnc, 16);
     
     globalConfig['bootstrapPeer'] = {ip, port, id: peerId};
-    console.log('bootstrapping to', globalConfig['bootstrapPeer']);
+    ui.logMsg('bootstrapping to', globalConfig['bootstrapPeer']);
 
     net.join(pair, ip, port, peerId);
 
@@ -101,14 +46,14 @@ function bootstrap(toks) {
 }
 
 function dumpPeerTable() {
-    console.log(globalConfig['peerTable'][0]);
-    console.log(globalConfig['peerTable'][128]);
-    console.log(globalConfig['peerTable'][255]);
+    ui.logMsg(globalConfig['peerTable'][0]);
+    ui.logMsg(globalConfig['peerTable'][128]);
+    ui.logMsg(globalConfig['peerTable'][255]);
     return true;
 }
 
 function dumpKeyTable() {
-    console.log(globalConfig['keyTable']);
+    ui.logMsg(globalConfig['keyTable']);
     return true;
 }
 
@@ -143,7 +88,7 @@ function handleCommand(command) {
 }
 
 function serverInit() {
-    console.log('setting up socket...');
+    ui.logMsg('setting up socket...');
     socket.on('error', (err) => {
         console.error(`server error:\n${err.stack}`);
         socket.close();
@@ -204,24 +149,24 @@ function serverInit() {
     bootstrapInfo += ':';
     bootstrapInfo += globalConfig['id'];
 
-    console.log(`bootstrap info: ${bootstrapInfo}`);
+    ui.logMsg(`bootstrap info: ${bootstrapInfo}`);
     globalConfig['bootstrapInfo'] = bootstrapInfo;
 
-    stdin.addListener("data", function(d) {
-        var input = d.toString().trim();
-        if(!handleCommand(input)) {
-            // handle userInput
-            var data = {
-                type: 'chat',
-                id: globalConfig['id'],
-                ts: Date.now(),
-                content: input,
-            }
-            // utils.addChat(data);
-            net.flood(globalConfig['pair'], data);
-        }
-    });
-    console.log(`bootstrap to a peer or have a peer bootstrap to you to get started`);
+    // stdin.addListener("data", function(d) {
+    //     var input = d.toString().trim();
+    //     if(!handleCommand(input)) {
+    //         // handle userInput
+    //         var data = {
+    //             type: 'chat',
+    //             id: globalConfig['id'],
+    //             ts: Date.now(),
+    //             content: input,
+    //         }
+    //         // utils.addChat(data);
+    //         net.flood(globalConfig['pair'], data);
+    //     }
+    // });
+    ui.logMsg(`bootstrap to a peer or have a peer bootstrap to you to get started`);
 }
 
 function killError(err) {
@@ -237,7 +182,7 @@ function getIp() {
             killError(err);
         }
         globalConfig['ext']['ip'] = ip;
-        console.log(ip);
+        ui.logMsg(ip);
         serverInit();
     });
 }
@@ -280,7 +225,7 @@ function holePunch(results) {
         }
     }
 
-    console.log('chose port', port);
+    ui.logMsg('chose port', port);
 
     upnpClient.portMapping({
         public: globalConfig['ext']['port'],
@@ -291,7 +236,7 @@ function holePunch(results) {
         local: false,
     }, function(err) {
         killError(err);
-        console.log('mapped port...');
+        ui.logMsg('mapped port...');
         init();
     });
 }
@@ -303,13 +248,13 @@ function unmap() {
         ttl: 0,
     }, function(err) {
         killError(err);
-        console.log('unmapped');
+        ui.logMsg('unmapped');
     });
 }
 
 function init() {
     if(ip.address().match(/(^127\.)|(^192\.168\.)|(^10\.)|(^172\.1[6-9]\.)|(^172\.2[0-9]\.)|(^172\.3[0-1]\.)|(^::1$)|(^[fF][cCdD])/)) {
-        console.log('attempting upnp...')
+        ui.logMsg('attempting upnp...')
         upnpClient.getMappings(function(err, results) {
             killError(err);
             var found = false;
@@ -321,7 +266,7 @@ function init() {
 
                 if(enabled && udp && description == 'Party line!' &&  privateIp == globalConfig['int']['ip']) {
                     found = true;
-                    console.log('found already open port');
+                    ui.logMsg('found already open port');
                     globalConfig['int']['port'] = results[ea]['private']['port'];
                     globalConfig['ext']['port'] = results[ea]['public']['port'];
                     break;
@@ -329,7 +274,7 @@ function init() {
             } 
 
             if(!found) {
-                console.log('open port not found, mapping');
+                ui.logMsg('open port not found, mapping');
                 holePunch(results);
                 return;
             }
@@ -355,11 +300,69 @@ function listMappings() {
             var udp = results[ea]['protocol'] === 'udp';
 
             if(udp && description == 'Party line!') {
-                console.log(results[ea]);
+                ui.logMsg(results[ea]);
             } 
         } 
     });
 }
+
+var upnpClient = natupnp.createClient();
+var socket = dgram.createSocket('udp4');
+
+var globalConfig = {
+    int: {
+        ip: ip.address(),
+        port: null,
+    }, 
+    ext: {
+        ip: null,
+        port: null,
+    },
+    verified: false,
+    routingTableBuilt: false,
+    bootstrapPeer: null,
+}
+
+var net = new Net(globalConfig, handleCommand);
+var utils = net.utils;
+var ui = net.ui;
+ui.start();
+
+var stdin = process.openStdin();
+globalConfig['peerTable'] = new Array(256);
+globalConfig['keyTable'] = {};
+
+ui.logMsg('generating keypair...');
+var pair = keypair({bits: 2048}); 
+var id = utils.sha256(pair.public);
+ui.logMsg(`id: ${id}`);
+
+ui.logMsg('generating ephemeral keys...');
+// var dh = crypto.createDiffieHellman(1024);
+// var pubkey = dh.generateKeys('hex');
+ui.logMsg(`initializing server...`);
+
+globalConfig['id'] = id;
+globalConfig['pair'] = pair;
+// globalConfig['dh'] = dh;
+
+globalConfig['idealRoutingTable'] = utils.calculateIdealRoutingTable(globalConfig['id']);
+globalConfig['peerCandidates'] = [];
+globalConfig['chatMessages'] = new Array(512);
+globalConfig['chatMessagesReceived'] = {};
+
+// TODO: create image with fingerprint
+
+// ui.logMsg('generating keys...');
+// var dh2 = crypto.createDiffieHellman(dh.getPrime(), dh.getGenerator());
+// var pubKey2 = dh2.generateKeys('hex');
+// ui.logMsg(`pubkey ${pubKey2}`);
+// // id is sha512 of public key
+// var fingerprint2 = crypto.createHash('sha256').update(Buffer.from(pubKey2, 'hex')).digest('hex');
+// ui.logMsg(`fingerprint: ${fingerprint2}`);
+
+// dh2.computeSecret(pubKey, 'hex');
+// var sessionSecret = dh.computeSecret(pubKey2, 'hex');
 
 init();
 // listMappings();

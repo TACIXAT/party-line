@@ -1,6 +1,6 @@
 var crypto = require('crypto');
 
-module.exports = function(globalConfig, net) {
+module.exports = function(globalConfig, net, ui) {
 
     module.sha256 = function(data) {
         return crypto.createHash('sha256').update(data).digest('hex');
@@ -49,15 +49,15 @@ module.exports = function(globalConfig, net) {
 
     // build node routing table
     module.buildRoutingTable = function(pair) {
-        console.log('building routing table...');
+        ui.logMsg('building routing table...');
         for(var i = 0; i < 256; i++) {
             globalConfig['peerTable'][i] = globalConfig['bootstrapPeer'];
         }
 
-        console.log('announcing to network...');
+        ui.logMsg('announcing to network...');
         net.announce(pair);
 
-        console.log('querying peers for closest...');
+        ui.logMsg('querying peers for closest...');
         var peer = globalConfig['bootstrapPeer'];
         for(var i = 0; i < 256; i++) {
             var targetId = globalConfig['idealRoutingTable'][i];
@@ -65,7 +65,7 @@ module.exports = function(globalConfig, net) {
         }
 
         setTimeout(function() {
-            console.log('happy chatting!');
+            ui.logMsg('happy chatting!');
         }, 20 * 258);
     }
 
@@ -235,7 +235,7 @@ module.exports = function(globalConfig, net) {
     module.validateMsg = function(msgJSON, dataKeys) {
         var msgKeys = ['sig', 'data'];
         if(!module.isJSON(msgJSON)) {
-            console.log('discarding', msgJSON.toString());
+            ui.logMsg('discarding', msgJSON.toString());
             return false;
         }
 
@@ -243,13 +243,13 @@ module.exports = function(globalConfig, net) {
         for(var idx in msgKeys) {
             var key = msgKeys[idx];
             if(!(key in msg)) {
-            console.log('discarding', msgJSON.toString());
+            ui.logMsg('discarding', msgJSON.toString());
                 return false;
             }
         }
 
         if(!module.isJSON(msg['data'])) {
-            console.log('discarding', msgJSON.toString());
+            ui.logMsg('discarding', msgJSON.toString());
             return false;
         }
 
@@ -257,7 +257,7 @@ module.exports = function(globalConfig, net) {
         for(var idx in dataKeys) {
             var key = dataKeys[idx];
             if(!(key in data)) {
-                console.log('discarding', msgJSON.toString());
+                ui.logMsg('discarding', msgJSON.toString());
                 return false;
             }   
         }
@@ -293,7 +293,7 @@ module.exports = function(globalConfig, net) {
 
         globalConfig['chatMessages'].push(chat);
         globalConfig['chatMessages'].shift();
-        console.log(`${data['id'].substr(64-6, 6)}: ${data['content']}`);
+        ui.logMsg(`${data['id'].substr(64-6, 6)}: ${data['content']}`);
     }
 
     return module;
