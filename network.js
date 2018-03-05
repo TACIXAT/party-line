@@ -354,6 +354,15 @@ module.exports = function(globalConfig, handleCommand) {
     // leave
     module.leave = function(pair) {
         ui.logMsg('leaving...')
+
+        module.onJoin = function() { return; };
+        module.onVerify = function() { return; };
+        module.onLeave = function() { return; };
+        module.onAnnounce = function() { return; };
+        module.onQueryClosest = function() { return; };
+        module.onResponseClosest = function() { return; };
+        module.onChat = function() { return; };
+
         var closest = utils.findClosest(globalConfig['peerTable'], globalConfig['id']);
         if(closest) {
             var pubkey = pair.public;

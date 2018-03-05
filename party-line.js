@@ -328,7 +328,7 @@ var utils = net.utils;
 var ui = net.ui;
 ui.start();
 
-var stdin = process.openStdin();
+// var stdin = process.openStdin();
 globalConfig['peerTable'] = new Array(256);
 globalConfig['keyTable'] = {};
 

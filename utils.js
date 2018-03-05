@@ -180,7 +180,6 @@ module.exports = function(globalConfig, net, ui) {
             var idealPeerId = globalConfig['idealRoutingTable'][idx];
             idealIds.push(idealPeerId);
             var closest = module.findClosestExclude(globalConfig['peerTable'], idealPeerId, [peer['id']]);
-            
             if(closest === undefined) {
                 delete globalConfig['peerTable'][idx];
                 continue;
