@@ -37,7 +37,7 @@ module.exports = function(globalConfig, net, ui) {
         var idBuf = Buffer.from(id, 'hex');
         for(var i = 0; i < 256; i++) {
             var powerBuf = Buffer.from((2**i).toString(16).padStart(64, '0'), 'hex');
-            var idealPeer = module.bufferXor(id, powerBuf);
+            var idealPeer = module.bufferXor(idBuf, powerBuf);
             idealPeerList.push(idealPeer.toString('hex'));
         }
         return idealPeerList;
@@ -95,6 +95,10 @@ module.exports = function(globalConfig, net, ui) {
     }
 
     module.updateTable = function(peer) {
+        if(peer['id'] === globalConfig['id']) {
+            ui.logMsg('trying to update table with self');
+            return;
+        }
         var idealMatches = [];
         for(var i = 0; i < 256; i++) {
             var targetId = globalConfig['idealRoutingTable'][i];
@@ -103,6 +107,7 @@ module.exports = function(globalConfig, net, ui) {
             if(currPeer === null || currPeer === undefined) {
                 idealMatches.push(targetId);
                 globalConfig['peerTable'][i] = peer;
+                globalConfig['keyTable'][peer['id']] = peer['key'];
                 continue;
             }
 
@@ -115,6 +120,7 @@ module.exports = function(globalConfig, net, ui) {
 
             if(peerDistance.compare(currDistance) < 0) {
                 idealMatches.push(targetId);
+                globalConfig['keyTable'][peer['id']] = peer['key'];
                 globalConfig['peerTable'][i] = peer;
             }
         }
@@ -181,8 +187,13 @@ module.exports = function(globalConfig, net, ui) {
             idealIds.push(idealPeerId);
             var closest = module.findClosestExclude(globalConfig['peerTable'], idealPeerId, [peer['id']]);
             if(closest === undefined) {
+                ui.logMsg(`hard deleted entry ${idx}`);
                 delete globalConfig['peerTable'][idx];
                 continue;
+            } else {
+                ui.logMsg(`replaced entry ${idx}`);
+                ui.logMsg(`with ${closest.id}`);
+                ui.logMsg(`was ${peer['id']}`);
             }
 
             globalConfig['peerTable'][idx] = closest;

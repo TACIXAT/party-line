@@ -206,7 +206,7 @@ module.exports = function(globalConfig, handleCommand) {
         // check have key
         var peerPubkey = data['key'];
         var peerId = data['id'];
-        if(peerId in globalConfig['keyTable']) {
+        if(peerId in globalConfig['keyTable'] || peerId == globalConfig['id']) {
             return;
         }
 
@@ -229,9 +229,10 @@ module.exports = function(globalConfig, handleCommand) {
         }
 
         var idealMatches = utils.wouldUpdateTable(peer);
+        ui.logMsg(`announce got, querying peer ${idealMatches.length} times`);
         for(var idx in idealMatches) {
             var idealPeerId = idealMatches[idx];
-            setTimeout(utils.delayQueryClosest.bind(undefined, pair, peer, idealPeerId), 20 * (idx+1));
+            setTimeout(utils.delayQueryClosest.bind(undefined, pair, peer, idealPeerId), 10 * (idx+1));
         }
         
         // propagate
@@ -305,6 +306,8 @@ module.exports = function(globalConfig, handleCommand) {
         module.send(peer, pair, responseData);
     }
 
+    module.count = 0;
+
     module.onResponseClosest = function(pair, msgJSON) {
         if(!utils.validateMsg(msgJSON, ['from', 'closest', 'self'])) {
             return;
@@ -335,7 +338,7 @@ module.exports = function(globalConfig, handleCommand) {
 
         // update routing table with peer who replied
         var peer = data['from'];
-        utils.updateTable(peer);
+        var added = utils.updateTable(peer);
         globalConfig['peerCandidates'] = globalConfig['peerCandidates'].filter(function(peerId) {
             return peerId != peer['id'];
         });
@@ -343,6 +346,7 @@ module.exports = function(globalConfig, handleCommand) {
         // ask suggested closest for ideal closest
         var closest = data['closest'];
         if(!data['self']) {
+            ui.logMsg('NOT SELF, QUERYING');
             var idealMatches = utils.wouldUpdateTable(closest);
             for(var idx in idealMatches) {
                 var idealPeerId = idealMatches[idx];
@@ -383,6 +387,8 @@ module.exports = function(globalConfig, handleCommand) {
             return;
         }
 
+        ui.logMsg('received leave');
+
         var msg = JSON.parse(msgJSON);
         var data = JSON.parse(msg['data']);
         var sig = msg['sig'];
@@ -392,6 +398,8 @@ module.exports = function(globalConfig, handleCommand) {
         if(!(peerId in globalConfig['keyTable'])) {
             return;
         }
+
+        ui.logMsg('peer in key table');
 
         var peerPubkey = globalConfig['keyTable'][peerId];
 
@@ -404,12 +412,29 @@ module.exports = function(globalConfig, handleCommand) {
             return;
         }
 
+        ui.logMsg('data integrity good');
+
         // check update routing table
         delete globalConfig['keyTable'][peerId];
         var idealIds = utils.updateTableRemove(peerId);
-        
+
+        if(idealIds) {
+            ui.logMsg(`removed peer from ${idealIds.length}`);
+        }
+
+        if(globalConfig['peerTable'][0] && 'id' in globalConfig['peerTable'][0]) {
+            ui.logMsg(globalConfig['peerTable'][0].id);
+        }
+        if(globalConfig['peerTable'][128] && 'id' in globalConfig['peerTable'][128]) {
+            ui.logMsg(globalConfig['peerTable'][128].id);
+        }
+        if(globalConfig['peerTable'][255] && 'id' in globalConfig['peerTable'][255]) {
+            ui.logMsg(globalConfig['peerTable'][255].id);
+        }
+
+
         // closest is self and empty peer table :(
-        var tableEmpty = globalConfig['peerTable'].filter(function(ea) { return ea != null }).length == 0;
+        var tableEmpty = globalConfig['peerTable'].filter(function(ea) { return ea }).length == 0;
         if(data['closest']['id'] == globalConfig['id'] && tableEmpty) {
             globalConfig['verified'] = false;
             globalConfig['routingTableBuilt'] = false;
@@ -419,6 +444,11 @@ module.exports = function(globalConfig, handleCommand) {
             ui.logMsg(globalConfig['bootstrapInfo']);
             return;
         }
+
+        ui.logMsg('querying for closest');
+        
+        ui.logMsg(globalConfig['id']);
+        ui.logMsg(data['closest']['id']);
 
         for(var idx in idealIds) {
             var idealPeerId = idealIds[idx];
