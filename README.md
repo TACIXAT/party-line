@@ -10,7 +10,7 @@
 ░▓    ░▓  ░▓░▓  ░▓  ░▓    ░▓      ░▓▓▓▓▓░▓▓▓▓▓░▓  ░▓░▓▓▓▓▓ ░▓
 ```
 
-Party Line is a decentralized peer to peer chat app with message integrity and end to end encryption. 
+Party Line is a decentralized peer to peer chat app with message integrity ~~and end to end encryption~~. 
 
 Main Line is the primary chat and control channel for the application. Things aren't encrypted in Main Line because the chat is global. Messages are signed and verifiable for [integrity porpoises](https://upload.wikimedia.org/wikipedia/commons/8/82/Delfinekko.gif).
 
@@ -20,13 +20,19 @@ Here's a link to the [protocol](protocol.md) for you fucking nerds!
 
 ## Getting Started
 
-`npm install some stuff`
+`npm install`
 
 `node partyline.js`
 
 ## Usage
 
+1. Get an active peer's bootstrap ID
 
+2. Start the client
+
+3. `/bootstrap <peer id>`
+
+4. Happy chatting!
 
 ## FAIRLY ARDUOUS QUESTS
 
