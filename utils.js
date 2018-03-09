@@ -53,20 +53,6 @@ module.exports = function(globalConfig, net, ui) {
         for(var i = 0; i < 256; i++) {
             globalConfig['peerTable'][i] = globalConfig['bootstrapPeer'];
         }
-
-        ui.logMsg('announcing to network...');
-        net.announce(pair);
-
-        ui.logMsg('querying peers for closest...');
-        var peer = globalConfig['bootstrapPeer'];
-        for(var i = 0; i < 256; i++) {
-            var targetId = globalConfig['idealRoutingTable'][i];
-            setTimeout(module.delayQueryClosest.bind(undefined, pair, peer, targetId), 20 * (i+1));
-        }
-
-        setTimeout(function() {
-            ui.logMsg('happy chatting!');
-        }, 20 * 258);
     }
 
     module.wouldUpdateTable = function(peer) {
@@ -99,6 +85,7 @@ module.exports = function(globalConfig, net, ui) {
             ui.logMsg('trying to update table with self');
             return;
         }
+        
         var idealMatches = [];
         for(var i = 0; i < 256; i++) {
             var targetId = globalConfig['idealRoutingTable'][i];
@@ -128,9 +115,10 @@ module.exports = function(globalConfig, net, ui) {
         return idealMatches;
     }
 
-    module.findClosestExclude = function(searchTable, targetId, [excludeIds]) {
+    module.findClosestExclude = function(searchTable, targetId, excludeIds) {
         var targetIdBuf = Buffer.from(targetId, 'hex');
 
+        // get initial closest
         var closest;
         for(var idx in searchTable) {
             if(!searchTable[idx] || excludeIds.indexOf(searchTable[idx]['id']) > -1) {
@@ -144,9 +132,11 @@ module.exports = function(globalConfig, net, ui) {
             return undefined;
         }
 
+        // calculate distance
         var closestIdBuf = Buffer.from(closest['id'], 'hex');
         var closestDist = module.bufferXor(closestIdBuf, targetIdBuf);
 
+        // iterate peers, find closer
         for(var idx in searchTable) {
             var peer = searchTable[idx];
 
@@ -180,6 +170,7 @@ module.exports = function(globalConfig, net, ui) {
         }
 
         var idealIds = [];
+        var delCount = 0;
         for(var j in indices) {
             var idx = indices[j];
             var peer = globalConfig['peerTable'][idx];
@@ -187,7 +178,7 @@ module.exports = function(globalConfig, net, ui) {
             idealIds.push(idealPeerId);
             var closest = module.findClosestExclude(globalConfig['peerTable'], idealPeerId, [peer['id']]);
             if(closest === undefined) {
-                ui.logMsg(`hard deleted entry ${idx}`);
+                delCount++;
                 delete globalConfig['peerTable'][idx];
                 continue;
             } else {
@@ -198,6 +189,8 @@ module.exports = function(globalConfig, net, ui) {
 
             globalConfig['peerTable'][idx] = closest;
         }
+        
+        ui.logMsg(`hard deleted entry ${delCount}`);
         return idealIds;
     }
 
@@ -245,7 +238,7 @@ module.exports = function(globalConfig, net, ui) {
     module.validateMsg = function(msgJSON, dataKeys) {
         var msgKeys = ['sig', 'data'];
         if(!module.isJSON(msgJSON)) {
-            ui.logMsg('discarding', msgJSON.toString());
+            ui.logMsg(`discarding ${msgJSON.toString()}`);
             return false;
         }
 
@@ -253,13 +246,13 @@ module.exports = function(globalConfig, net, ui) {
         for(var idx in msgKeys) {
             var key = msgKeys[idx];
             if(!(key in msg)) {
-            ui.logMsg('discarding', msgJSON.toString());
+            ui.logMsg(`discarding ${msgJSON.toString()}`);
                 return false;
             }
         }
 
         if(!module.isJSON(msg['data'])) {
-            ui.logMsg('discarding', msgJSON.toString());
+            ui.logMsg(`discarding ${msgJSON.toString()}`);
             return false;
         }
 
@@ -267,7 +260,7 @@ module.exports = function(globalConfig, net, ui) {
         for(var idx in dataKeys) {
             var key = dataKeys[idx];
             if(!(key in data)) {
-                ui.logMsg('discarding', msgJSON.toString());
+                ui.logMsg(`discarding ${msgJSON.toString()}`);
                 return false;
             }   
         }
