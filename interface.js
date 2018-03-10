@@ -2,7 +2,7 @@ var blessed = require('blessed');
 
 module.exports = function() {
     var screen = blessed.screen({
-        smartCSR: true
+        smartCSR: true,
     });
 
     var log = blessed.log({

@@ -472,6 +472,61 @@ module.exports = function(globalConfig, handleCommand) {
         module.floodReplay(msgJSON);
     }
 
+    module.queryKey = function(targetId) {
+        var data = {
+            type: 'query_key',
+            id: globalConfig['id'],
+            ip: globalConfig['ext']['ip'],
+            port: globalConfig['ext']['port'],
+            target: targetId,
+        };
+
+        // get closest peer
+        var closestPeer = utils.findClosest(globalConfig['peerTable'], targetId);
+
+        if(!closestPeer) {
+            return;
+        }
+
+        module.send(closestPeer, globalConfig['pair'], data);
+    }
+
+    module.onQueryKey = function(msgJSON) {
+        if(!utils.validateMsg(msgJSON, ['id', 'ip', 'port', 'target'])) {
+            return;
+        }
+
+        var msg = JSON.parse(msgJSON);
+        var data = JSON.parse(msg['data']);
+        var sig = msg['sig'];
+
+        if(data['id'] === globalConfig['id']) {
+            // get key
+            var data = {
+                type: 'reponse_key',
+                key: globalConfig['pair'].public,
+            }
+        } else {
+            var closestPeer = utils.findClosest(globalConfig['peerTable'], targetId);
+
+            if(!closestPeer) {
+                return;
+            }            
+
+            var data = {
+                type: 'response_key', 
+                closest: closestPeer,
+
+            }
+
+            module.send(data[''])
+        }
+    }
+
+    module.onResponseKey = function(msgJSON) {
+
+    }
+
     module.onChat = function(msgJSON) {
         if(!utils.validateMsg(msgJSON, ['content', 'id', 'ts'])) {
             return;
@@ -482,9 +537,12 @@ module.exports = function(globalConfig, handleCommand) {
         var sig = msg['sig'];
 
         var peerId = data['id'];
-        // if(!(peerId in globalConfig['keyTable']) || !utils.verify(globalConfig['keyTable'][peerId], sig, msg['data'])) {
-        //     return;
-        // }
+        if(!(peerId in globalConfig['keyTable'])) {
+            data['verified'] = false;
+            // TODO: query for user key
+        } else if(!utils.verify(globalConfig['keyTable'][peerId], sig, msg['data'])) {
+            return;
+        }
 
         if(data['content'] == '' || utils.checkReceivedChat(data)) {
             return;
