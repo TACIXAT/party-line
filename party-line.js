@@ -57,6 +57,16 @@ function dumpKeyTable() {
     return true;
 }
 
+// create named chat
+
+// join chat
+// exchange public keys 
+// do dh key exchange
+// distribute chat id and shared secret
+// distribute participant list
+
+// new peer announces / exchanges keys with participants
+
 function handleCommand(command) {
     var toks = command.split(' ');
     var cmd = toks[0];

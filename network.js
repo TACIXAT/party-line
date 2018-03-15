@@ -524,7 +524,10 @@ module.exports = function(globalConfig, handleCommand) {
     }
 
     module.onResponseKey = function(msgJSON) {
-
+        // hash key
+        // validate data
+        // add key to key table
+        // iterate message log and validate messages
     }
 
     module.onChat = function(msgJSON) {

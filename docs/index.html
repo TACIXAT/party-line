@@ -1,0 +1,83 @@
+<html>
+    <head>
+        <style>
+            .header {
+                grid-area: header;
+                background-color: #FF6EFF;
+            }
+
+            .main {
+                grid-area: main;
+                background-color: #66FF66;
+            }
+
+            .footer {
+                grid-area: footer;
+                background-color: #FF9933;
+            }
+
+            .extra {
+                grid-area: extra;
+                background-color: #50BFE6;
+            }
+
+            .cool-site {
+                height: 100%;
+                width: 100%;
+                border: none;
+            }
+
+            h1 {
+                margin: 0;
+            }
+
+            @media (min-width: 600px) {
+                .site {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr 1fr;
+                    grid-template-rows: 1fr 1fr 1fr;
+                    grid-template-areas: 
+                        "main main header"
+                        "main main extra"
+                        "footer footer footer";
+                    height: 100%;
+                    overflow-x: hidden;
+                }
+
+                .cool-site {
+                    width: 200%;
+                    height: 200%;
+                    max-height: 600px;
+                    -moz-transform:scale(0.5);
+                    -moz-transform-origin: 0 0;
+                    -o-transform: scale(0.5);
+                    -o-transform-origin: 0 0;
+                    -webkit-transform: scale(0.5);
+                    -webkit-transform-origin: 0 0;
+                }
+
+                .header {
+                    text-align: right;
+                }
+            }
+        </style>
+    </head>
+    <body class='site'>
+        <header class='header'>
+            <h1>PARTY LINE</h1>
+            <h2>RESPONSIVE SHOWCASE</h2>
+        </header>
+        <main class="main">
+            <p>Party Line is a chat application.</p>
+            <p>Download the source from <a href="https://github.com/douggard/party-line">the source thing</a>.</p>
+        </main>
+        <extra class="extra">
+            <iframe class='cool-site' src="https://en.wikipedia.org/wiki/Party_line_(telephony)"></iframe>
+        </extra>
+        <footer class='footer'>
+            <p>network is <del>live</del></p>
+            <p>connect with:</p>
+            <pre>/bs ...</pre>
+        </footer>
+    </body>
+</html>
