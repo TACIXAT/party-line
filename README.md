@@ -16,8 +16,6 @@ Main Line is the primary chat and control channel for the application. Things ar
 
 Party Lines are sub chats, established between a set of peers. These chats have end to end encryption and file transfer capabilities. 
 
-**Warning - Currently opens ports on your router and doesn't close them.**
-
 ## Getting Started
 
 `npm install`

@@ -382,7 +382,7 @@ module.exports = function(globalConfig, handleCommand) {
     }
 
     // leave
-    module.leave = function(pair) {
+    module.leave = function(pair, unmapPorts) {
         // prevent replies to anyone
         module.onJoin = function() { return; };
         module.onVerify = function() { return; };
@@ -412,7 +412,8 @@ module.exports = function(globalConfig, handleCommand) {
             sent.push(peer['id']);
         }
 
-        ui.logMsg('safe to exit (ctrl + c) now...');
+        unmapPorts();
+        ui.logMsg('safe to exit (esc) now...');
         return true;
     }
 

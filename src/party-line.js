@@ -85,7 +85,7 @@ function handleCommand(command) {
         case '/leave':
         case '/exit':
         case '/quit':
-            return net.leave(pair);
+            return net.leave(pair, unmapPorts);
         default:
             break;
     }
@@ -162,20 +162,6 @@ function serverInit() {
     ui.logMsg(`bootstrap info: ${bootstrapInfo}`);
     globalConfig['bootstrapInfo'] = bootstrapInfo;
 
-    // stdin.addListener("data", function(d) {
-    //     var input = d.toString().trim();
-    //     if(!handleCommand(input)) {
-    //         // handle userInput
-    //         var data = {
-    //             type: 'chat',
-    //             id: globalConfig['id'],
-    //             ts: Date.now(),
-    //             content: input,
-    //         }
-    //         // utils.addChat(data);
-    //         net.flood(globalConfig['pair'], data);
-    //     }
-    // });
     ui.logMsg(`bootstrap to a peer or have a peer bootstrap to you to get started`);
 }
 
@@ -251,17 +237,6 @@ function holePunch(results) {
     });
 }
 
-function unmap() {
-    upnpClient.portUnmapping({
-        public: 0x1337,
-        protocol: 'UDP',
-        ttl: 0,
-    }, function(err) {
-        killError(err);
-        ui.logMsg('unmapped');
-    });
-}
-
 function init() {
     if(ip.address().match(/(^127\.)|(^192\.168\.)|(^10\.)|(^172\.1[6-9]\.)|(^172\.2[0-9]\.)|(^172\.3[0-1]\.)|(^::1$)|(^[fF][cCdD])/)) {
         ui.logMsg('attempting upnp...')
@@ -299,6 +274,31 @@ function init() {
         serverInit();
     }
     // nat-pmp when the need arises, upnp seems to work everywhere I've tried
+}
+
+function unmapPorts() {
+    upnpClient.getMappings(function(err, results) {
+        killError(err);
+        for(ea in results) {
+            var description = results[ea]['description'];
+            var privateIp = results[ea]['private']['host'];
+            var udp = results[ea]['protocol'] === 'udp';
+            var port = results[ea]['public']['port'];
+
+            if(udp && description == 'Party line!' && privateIp == globalConfig['int']['ip']) {
+                ui.logMsg(`unmapping ${port}...`)
+                upnpClient.portUnmapping(
+                    {public: port, protocol: 'UDP'}, 
+                    function(err, res) {
+                        if(err) {
+                            ui.logMsg(`err unmapping: ${err}`);
+                        } else {
+                            ui.logMsg('unmapped');
+                        }
+                    });
+            } 
+        } 
+    });
 }
 
 function listMappings() {
