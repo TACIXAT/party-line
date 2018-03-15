@@ -1,6 +1,19 @@
 <html>
     <head>
         <style>
+            .site {
+                display: grid;
+                grid-template-columns: 1fr;
+                grid-template-rows: 1fr 1fr 1fr 1fr;
+                grid-template-areas: 
+                    "header"
+                    "main"
+                    "extra"
+                    "footer";
+                height: 100%;
+                overflow-x: hidden;
+            }
+
             .header {
                 grid-area: header;
                 background-color: #FF6EFF;
