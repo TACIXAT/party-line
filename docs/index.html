@@ -19,21 +19,25 @@
             .header {
                 grid-area: header;
                 background-color: #FF6EFF;
+                min-width: 0;
             }
 
             .main {
                 grid-area: main;
                 background-color: #66FF66;
+                min-width: 0;
             }
 
             .footer {
                 grid-area: footer;
                 background-color: #FF9933;
+                min-width: 0;
             }
 
             .extra {
                 grid-area: extra;
                 background-color: #50BFE6;
+                min-width: 0;
             }
 
             .cool-site {
@@ -41,6 +45,8 @@
                 width: 100%;
                 border: none;
                 max-height: 600px;
+                min-height: 300px;
+                min-width: 0;
             }
 
             h1 {
@@ -70,6 +76,7 @@
                     -o-transform-origin: 0 0;
                     -webkit-transform: scale(0.5);
                     -webkit-transform-origin: 0 0;
+                    min-height: auto;
                 }
 
                 .header {
