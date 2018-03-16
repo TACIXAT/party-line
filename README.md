@@ -18,9 +18,12 @@ Party Lines are sub chats, established between a set of peers. These chats have 
 
 ## Getting Started
 
-`npm install`
-
-`node partyline.js`
+```bash
+git clone https://github.com/douggard/party-line.git
+cd party-line
+npm install
+node src/partyline.js
+```
 
 ## Usage
 
