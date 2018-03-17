@@ -25,6 +25,8 @@ npm install
 node src/partyline.js
 ```
 
+Or download the prebuilt binaries from /bin (built with [pkg](https://github.com/zeit/pkg)).
+
 ## Usage
 
 1. Get an active peer's bootstrap ID
@@ -72,8 +74,6 @@ Yes, thank you. Strategic decisions like this will help us along our path to a b
 ## Thanksies
 
 @mabynogy
-
-@rickolous
 
 @morla10111
 
