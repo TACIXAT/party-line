@@ -392,7 +392,6 @@ module.exports = function(globalConfig, handleCommand) {
         module.onResponseClosest = function() { return; };
         module.onChat = function() { return; };
 
-        // TODO: don't fail to send if closest not found
         var sent = [];
         for(var i = 0; i < 256; i++) {
             var peer = globalConfig['peerTable'][i];
@@ -492,6 +491,11 @@ module.exports = function(globalConfig, handleCommand) {
         module.send(closestPeer, globalConfig['pair'], data);
     }
 
+    module.sendReplay = function(peer, data) {
+        var socket = globalConfig['socket'];
+        socket.send(data, peer['port'], peer['ip']);
+    }
+
     module.onQueryKey = function(msgJSON) {
         if(!utils.validateMsg(msgJSON, ['id', 'ip', 'port', 'target'])) {
             return;
@@ -503,31 +507,51 @@ module.exports = function(globalConfig, handleCommand) {
 
         if(data['id'] === globalConfig['id']) {
             // get key
-            var data = {
+            var responseData = {
                 type: 'reponse_key',
                 key: globalConfig['pair'].public,
             }
+            
+            module.send(data, globalConfig['pair'], responseData);
         } else {
-            var closestPeer = utils.findClosest(globalConfig['peerTable'], targetId);
+            var closestPeer = utils.findClosest(globalConfig['peerTable'], data['target']);
 
             if(!closestPeer) {
                 return;
             }            
 
-            var data = {
-                type: 'response_key', 
-                closest: closestPeer,
-
+            var targetIdBuf = Buffer.from(data['target'], 'hex');
+            var selfDist = utils.bufferXor(Buffer.from(peerSelf['id'], 'hex'), targetIdBuf);
+            closestDist = utils.bufferXor(Buffer.from(closestPeer['id'], 'hex'), targetIdBuf);
+            if(selfDist.compare(closestDist) < 0) {
+                return;
             }
 
-            module.send(data[''])
+            module.sendReplay(closestPeer, msgJSON);
         }
+
     }
 
     module.onResponseKey = function(msgJSON) {
+        if(!utils.validateMsg(msgJSON, ['key'])) {
+            return;
+        }
+
+        var msg = JSON.parse(msgJSON);
+        var data = JSON.parse(msg['data']);
+        var sig = msg['sig'];
+
         // hash key
+        var peerId = utils.sha256(data['key']);
+
         // validate data
+        if(!utils.verify(data['key'], sig, msg['data'])) {
+            return;
+        }
+
         // add key to key table
+        globalConfig['keyTable'][peerId] = data['key'];
+
         // iterate message log and validate messages
     }
 
@@ -541,11 +565,19 @@ module.exports = function(globalConfig, handleCommand) {
         var sig = msg['sig'];
 
         var peerId = data['id'];
-        if(!(peerId in globalConfig['keyTable'])) {
+
+        if(peerId == globalConfig['id']) {
+            if(!utils.verify(globalConfig['id'], sig, msg['data'])) {
+                return;
+            }
+            data['verified'] = true;
+        } else if(!(peerId in globalConfig['keyTable'])) {
             data['verified'] = false;
-            // TODO: query for user key
+            module.queryKey(peerId);
         } else if(!utils.verify(globalConfig['keyTable'][peerId], sig, msg['data'])) {
             return;
+        } else {
+            data['verified'] = true;
         }
 
         if(data['content'] == '' || utils.checkReceivedChat(data)) {

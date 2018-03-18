@@ -291,12 +291,22 @@ module.exports = function(globalConfig, net, ui) {
             id: data['id'],
             ts: data['ts'],
             content: data['content'],
+            verified: data['verified'],
             time: Date.now(),
         }
 
         globalConfig['chatMessages'].push(chat);
         globalConfig['chatMessages'].shift();
-        ui.logMsg(`${data['id'].substr(64-6, 6)}: ${data['content']}`);
+        var d = new Date(chat['time']);
+        var h = d.getHours().toString();
+        h = h.length == 1 ? '0' + h : h;
+        var m = d.getMinutes().toString();
+        m = m.length == 1 ? '0' + m : m;
+        var s = d.getSeconds().toString();
+        s = s.length == 1 ? '0' + s : s;
+
+        var time = `${h}:${m}:${s}`
+        ui.logMsg(`${time} ${data['id'].substr(64-6, 6)} ${chat['verified'] ? '(✔)' : ''}: ${data['content']}`);
     }
 
     return module;
