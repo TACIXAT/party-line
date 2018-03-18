@@ -180,6 +180,7 @@ function serverInit() {
 
 function killError(err) {
     if(err) {
+        ui.stop();
         console.error(err);
         process.exit(1);
     }

@@ -84,5 +84,9 @@ module.exports = function() {
         screen.render();
     }
 
+    module.stop = function() {
+        screen.destroy();
+    }
+
     return module;
 }
