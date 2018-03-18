@@ -134,6 +134,18 @@ function serverInit() {
             case 'response_closest':
                 net.onResponseClosest(pair, msgJSON);
                 break;
+            case 'connectivity_check':
+                net.onConnectivityCheck(pair, msgJSON);
+                break;
+            case 'connectivity_confirm':
+                net.onConnectivityConfirm(pair, msgJSON);
+                break;
+            case 'query_key':
+                net.onQueryKey(pair, msgJSON);
+                break;
+            case 'response_key':
+                net.onResponseKey(pair, msgJSON);
+                break;
             case 'chat':
                 net.onChat(msgJSON);
                 break;
@@ -163,6 +175,7 @@ function serverInit() {
     globalConfig['bootstrapInfo'] = bootstrapInfo;
 
     ui.logMsg(`bootstrap to a peer or have a peer bootstrap to you to get started`);
+    setInterval(net.connectivityCheck, 10000);
 }
 
 function killError(err) {

@@ -194,6 +194,28 @@ module.exports = function(globalConfig, net, ui) {
         return idealIds;
     }
 
+    module.removePeer = function(peerId, closest) {
+        // check update routing table
+        delete globalConfig['keyTable'][peerId];
+        var idealIds = module.updateTableRemove(peerId);
+
+        var tableEmpty = globalConfig['peerTable'].filter(function(ea) { return ea }).length == 0;
+        if(tableEmpty) {
+            globalConfig['verified'] = false;
+            globalConfig['routingTableBuilt'] = false;
+            
+            if(!closest) {
+                // we're alone, don't flood message or query for closest to yourself
+                ui.logMsg('no peers remaining :(');
+                ui.logMsg('bootstrap some new ones!');
+                ui.logMsg(globalConfig['bootstrapInfo']);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     module.findClosest = function(searchTable, targetId) {
         var targetIdBuf = Buffer.from(targetId, 'hex');
 
@@ -306,7 +328,7 @@ module.exports = function(globalConfig, net, ui) {
         s = s.length == 1 ? '0' + s : s;
 
         var time = `${h}:${m}:${s}`
-        ui.logMsg(`${time} ${data['id'].substr(64-6, 6)} ${chat['verified'] ? '(✔)' : ''}: ${data['content']}`);
+        ui.logMsg(`${time} ${chat['verified'] ? '(✔)' : '(✖)'} ${data['id'].substr(64-6, 6)}: ${data['content']}`);
     }
 
     return module;

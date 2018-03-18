@@ -358,6 +358,7 @@ module.exports = function(globalConfig, handleCommand) {
 
         // update routing table with peer who replied
         var peer = data['from'];
+        peer['seen'] = Date.now();
         var added = utils.updateTable(peer);
         globalConfig['peerCandidates'] = globalConfig['peerCandidates'].filter(function(peerId) {
             return peerId != peer['id'];
@@ -442,22 +443,9 @@ module.exports = function(globalConfig, handleCommand) {
             return;
         }
 
-        // check update routing table
-        delete globalConfig['keyTable'][peerId];
-        var idealIds = utils.updateTableRemove(peerId);
-
-        var tableEmpty = globalConfig['peerTable'].filter(function(ea) { return ea }).length == 0;
-        if(tableEmpty) {
-            globalConfig['verified'] = false;
-            globalConfig['routingTableBuilt'] = false;
-            
-            if(!data['closest']) {
-                // we're alone, don't flood message or query for closest to yourself
-                ui.logMsg('no peers remaining :(');
-                ui.logMsg('bootstrap some new ones!');
-                ui.logMsg(globalConfig['bootstrapInfo']);
-                return;
-            }
+        var empty = utils.removePeer(peerId, data['closest']);
+        if(empty) {
+            return;
         }
 
         if(data['closest']) {
@@ -470,6 +458,125 @@ module.exports = function(globalConfig, handleCommand) {
 
         // propagate
         module.floodReplay(msgJSON);
+    }
+
+    module.connectivityCheck = function() {
+        var sent = [];
+        var peerSelf = {
+            id: globalConfig['id'],
+            ip: globalConfig['ext']['ip'],
+            port: globalConfig['ext']['port'],
+            key: globalConfig['pair'].public,
+        };
+
+        var data = {
+            type: 'connectivity_check',
+            from: peerSelf,
+        };
+
+        for(var i = 0; i < 256; i++) {
+            var peer = globalConfig['peerTable'][i];
+            if(!peer || sent.indexOf(peer['id']) > -1) {
+                continue;
+            }
+
+            module.send(peer, globalConfig['pair'], data);
+            sent.push(peer['id']);
+        }
+
+        var now = Date.now();
+        for(var i = 0; i < 256; i++) {
+            var peer = globalConfig['peerTable'][i];
+            if(!peer || !('id' in peer) || !('seen' in peer)) {
+                continue;
+            }
+
+            // TODO: confirm
+            // probably only need to do this once cause storage by reference
+            var delta = now - peer['seen'];
+            if(delta > 60000) {
+                ui.logMsg(`Removing peer ${peer['id']} (failed connectivity check)`);
+                utils.removePeer(peer['id']);
+            }
+        }
+    }
+
+    module.onConnectivityCheck = function(pair, msgJSON) {
+        if(!utils.validateMsg(msgJSON, ['from'])) {
+            return;
+        }
+
+        var msg = JSON.parse(msgJSON);
+        var data = JSON.parse(msg['data']);
+        var sig = msg['sig'];
+
+        var peer = data['from'];
+
+        var keys = ['id', 'key', 'ip', 'port'];
+        for(var idx in keys) {
+            if(!(keys[idx] in peer)) {
+                return;
+            }
+        }
+
+        var peerId = peer['id'];
+        var peerPubkey = peer['key'];
+
+        if(peerId in globalConfig['keyTable']) {
+            if(globalConfig['keyTable'][peerId] != peerPubkey) {
+                return;
+            }
+        }
+
+        var pubkeyHash = utils.sha256(peerPubkey);
+        var peerIdMatch = peerId === pubkeyHash; 
+        var dataIntegrity = utils.verify(peerPubkey, sig, msg['data']);
+
+        if(!peerIdMatch || !dataIntegrity) {
+            return;
+        }
+
+        var responseData = {
+            type: 'connectivity_confirm',
+            id: globalConfig['id'],
+        };
+
+        module.send(data['from'], pair, responseData);
+    }
+
+    module.onConnectivityConfirm = function(pair, msgJSON) {
+        if(!utils.validateMsg(msgJSON, ['id'])) {
+            return;
+        }
+
+        var msg = JSON.parse(msgJSON);
+        var data = JSON.parse(msg['data']);
+        var sig = msg['sig'];
+
+        var peerId = data['id'];
+
+        if(!(peerId in globalConfig['keyTable'])) {
+            return;
+        }
+
+        var peerPubkey = globalConfig['keyTable'][peerId];
+        if(!utils.verify(peerPubkey, sig, msg['data'])) {
+            return;
+        }
+
+        var now = Date.now();
+        for(var i = 0; i < 256; i++) {
+            var peer = globalConfig['peerTable'][i];
+            if(!peer || !('id' in peer)) {
+                continue;
+            }
+
+            // TODO: confirm
+            // probably only need to do this once cause storage by reference
+            if(peer['id'] == peerId) {
+                peer['seen'] = now;
+            }
+        }
     }
 
     module.queryKey = function(targetId) {
@@ -496,7 +603,7 @@ module.exports = function(globalConfig, handleCommand) {
         socket.send(data, peer['port'], peer['ip']);
     }
 
-    module.onQueryKey = function(msgJSON) {
+    module.onQueryKey = function(pair, msgJSON) {
         if(!utils.validateMsg(msgJSON, ['id', 'ip', 'port', 'target'])) {
             return;
         }
@@ -508,11 +615,11 @@ module.exports = function(globalConfig, handleCommand) {
         if(data['id'] === globalConfig['id']) {
             // get key
             var responseData = {
-                type: 'reponse_key',
-                key: globalConfig['pair'].public,
+                type: 'response_key',
+                key: pair.public,
             }
             
-            module.send(data, globalConfig['pair'], responseData);
+            module.send(data, pair, responseData);
         } else {
             var closestPeer = utils.findClosest(globalConfig['peerTable'], data['target']);
 
@@ -532,7 +639,7 @@ module.exports = function(globalConfig, handleCommand) {
 
     }
 
-    module.onResponseKey = function(msgJSON) {
+    module.onResponseKey = function(pair, msgJSON) {
         if(!utils.validateMsg(msgJSON, ['key'])) {
             return;
         }
@@ -567,7 +674,7 @@ module.exports = function(globalConfig, handleCommand) {
         var peerId = data['id'];
 
         if(peerId == globalConfig['id']) {
-            if(!utils.verify(globalConfig['id'], sig, msg['data'])) {
+            if(!utils.verify(globalConfig['pair'].public, sig, msg['data'])) {
                 return;
             }
             data['verified'] = true;
