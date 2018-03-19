@@ -413,7 +413,6 @@ module.exports = function(globalConfig, handleCommand) {
         }
 
         unmapPorts();
-        ui.logMsg('safe to exit (esc) now...');
         return true;
     }
 

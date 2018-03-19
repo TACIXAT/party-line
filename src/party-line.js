@@ -291,28 +291,43 @@ function init() {
 }
 
 function unmapPorts() {
-    upnpClient.getMappings(function(err, results) {
-        killError(err);
-        for(ea in results) {
-            var description = results[ea]['description'];
-            var privateIp = results[ea]['private']['host'];
-            var udp = results[ea]['protocol'] === 'udp';
-            var port = results[ea]['public']['port'];
+    if(ip.address().match(/(^127\.)|(^192\.168\.)|(^10\.)|(^172\.1[6-9]\.)|(^172\.2[0-9]\.)|(^172\.3[0-1]\.)|(^::1$)|(^[fF][cCdD])/)) {
+        ui.logMsg('unmapping ports...');
+        upnpClient.getMappings(function(err, results) {
+            killError(err);
+            for(ea in results) {
+                var description = results[ea]['description'];
+                var privateIp = results[ea]['private']['host'];
+                var udp = results[ea]['protocol'] === 'udp';
+                var port = results[ea]['public']['port'];
 
-            if(udp && description == 'Party line!' && privateIp == globalConfig['int']['ip']) {
-                ui.logMsg(`unmapping ${port}...`)
-                upnpClient.portUnmapping(
-                    {public: port, protocol: 'UDP'}, 
-                    function(err, res) {
-                        if(err) {
-                            ui.logMsg(`err unmapping: ${err}`);
-                        } else {
-                            ui.logMsg('unmapped');
-                        }
-                    });
+                if(udp && description == 'Party line!' && privateIp == globalConfig['int']['ip']) {
+                    ui.logMsg(`unmapping ${port}...`);
+                    if(!('unmap' in globalConfig)) {
+                        globalConfig['unmap'] = 0;
+                    }
+                    globalConfig['unmap'] += 1;
+                    upnpClient.portUnmapping(
+                        {public: port, protocol: 'UDP'}, 
+                        function(port, err, res) {
+                            globalConfig['unmap'] -= 1;
+                            
+                            if(err) {
+                                ui.logMsg(`err unmapping: ${err}`);
+                            } else {
+                                ui.logMsg(`unmapped ${port}`);
+                            }
+                            
+                            if(globalConfig['unmap'] == 0) {
+                                ui.logMsg('safe to exit (F4) now...')
+                            }
+                        }.bind(undefined, port));
+                } 
             } 
-        } 
-    });
+        });
+    } else {
+        ui.logMsg('safe to exit (F4) now...')
+    }
 }
 
 function listMappings() {
