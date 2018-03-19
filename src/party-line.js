@@ -67,6 +67,23 @@ function dumpKeyTable() {
 
 // new peer announces / exchanges keys with participants
 
+function showHelp() {
+    ui.logMsg('==== HELPFUL ====');
+    ui.logMsg('');
+    ui.logMsg('==== BOOTSTRAP');
+    ui.logMsg('/bootstrap <peer\'s bootstrap info>');
+    ui.logMsg('bootstrap your initial connection to a peer');
+    ui.logMsg('aka: /bs');
+    ui.logMsg('');
+    ui.logMsg('==== LEAVE');
+    ui.logMsg('/leave');
+    ui.logMsg('notify peers of departure and close ports');
+    ui.logMsg('aka: /exit /quit');
+    ui.logMsg('');
+    ui.logMsg('==== ENDHELP ====');
+    return true;
+}
+
 function handleCommand(command) {
     var toks = command.split(' ');
     var cmd = toks[0];
@@ -74,7 +91,6 @@ function handleCommand(command) {
     switch(cmd) {
         case '/bootstrap':
         case '/bs':
-        case '/join':
             return bootstrap(toks);
         case '/peerTable':
         case '/pt':
@@ -86,6 +102,8 @@ function handleCommand(command) {
         case '/exit':
         case '/quit':
             return net.leave(pair, unmapPorts);
+        case '/help':
+            return showHelp();
         default:
             break;
     }
