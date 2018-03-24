@@ -392,6 +392,7 @@ module.exports = function(globalConfig, handleCommand) {
         module.onQueryClosest = function() { return; };
         module.onResponseClosest = function() { return; };
         module.onChat = function() { return; };
+        // TODO: add rest
 
         var sent = [];
         for(var i = 0; i < 256; i++) {
