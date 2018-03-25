@@ -695,5 +695,98 @@ module.exports = function(globalConfig, handleCommand) {
         module.floodReplay(msgJSON);
     }
 
+    module.route = function(targetId) {
+        var closestPeer = utils.findClosest(globalConfig['peerTable'], targetId);
+
+        if(!closestPeer) {
+            return;
+        }
+
+        module.send(closestPeer, globalConfig['pair'], data);
+    }
+
+    module.setupSecure = function(pair, targetId) {
+        // A: send dhPubkey, prime, generator
+        var dh = globalConfig['dh'];
+        var dhPubkey = dh.getPublicKey('hex');
+        var prime = dh.getPrime('hex');
+        var generator = dh.getGenerator('hex');
+        var data = {
+            type: 'setup_secure',
+            dhKey: dhPubkey,
+            prime: prime,
+            generator: generator,
+            key: pair.public,
+        }
+
+        module.route(peerId, pair, data);
+    }
+
+    module.onSetupSecure = function(pair, msgJSON) {
+        if(!utils.validateMsg(msgJSON, ['dhKey', 'prime', 'generator', 'key'])) {
+            return;
+        }
+
+        var msg = JSON.parse(msgJSON);
+        var data = JSON.parse(msg['data']);
+        var sig = msg['sig'];
+        var peerPubkey = data['key'];
+
+        var dataIntegrity = utils.verify(peerPubkey, sig, msg['data']);
+        if(!dataIntegrity) {
+            return;
+        }
+
+        var peerId = utils.sha256(peerPubkey);
+        globalConfig['keyTable'][peerId] = peerPubkey;
+
+        var prime = data['prime'];
+        var generator = data['generator'];
+        var dhKeyPeer = data['dhKey'];
+        // B: createDiffieHellman(prime, generator)
+        var dhTmp = crypto.createDiffieHellman(prime, generator);
+        // B: generateKeys()
+        var dhKeyTmp = dhTmp.generateKeys();
+        // B: computeSecret
+        var sharedSecret = dhTmp.computeSecret(dhKeyPeer);
+
+        // TODO: add secret to secret table or something
+        
+        // B: send dhPubkey
+        var data = {
+            type: 'finalize_secure',
+            dhKey: dhKeyTmp,
+            key: pair.public,
+        }
+
+        module.route(peerId, pair, data);
+    }
+
+    module.onFinalizeSecure = function(pair, msgJSON) {
+        if(!utils.validateMsg(msgJSON, ['dhKey', 'key'])) {
+            return;
+        }
+
+        var msg = JSON.parse(msgJSON);
+        var data = JSON.parse(msg['data']);
+        var sig = msg['sig'];
+        var peerPubkey = data['key'];
+
+        var dataIntegrity = utils.verify(peerPubkey, sig, msg['data']);
+        if(!dataIntegrity) {
+            return;
+        }
+
+        var peerId = utils.sha256(peerPubkey);
+        globalConfig['keyTable'][peerId] = peerPubkey;
+
+        // A: computeSecret
+        var dh = globalConfig['dh'];
+        var dhKeyPeer = data['dhKey'];
+        var sharedSecret = dh.computeSecret(dhKeyPeer);
+
+        // TODO: add secret to secret table or something
+    }
+
     return module;
 }

@@ -395,13 +395,13 @@ var id = utils.sha256(pair.public);
 ui.logMsg(`id: ${id}`);
 
 ui.logMsg('generating ephemeral keys...');
-// var dh = crypto.createDiffieHellman(1024);
-// var pubkey = dh.generateKeys('hex');
+var dh = crypto.createDiffieHellman(2048);
+var dhPub = dh.generateKeys('hex');
 ui.logMsg(`initializing server...`);
 
 globalConfig['id'] = id;
 globalConfig['pair'] = pair;
-// globalConfig['dh'] = dh;
+globalConfig['dh'] = dh;
 
 globalConfig['idealRoutingTable'] = utils.calculateIdealRoutingTable(globalConfig['id']);
 globalConfig['peerCandidates'] = [];
