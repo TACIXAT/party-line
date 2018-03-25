@@ -84,11 +84,62 @@ function showHelp() {
     return true;
 }
 
+function showId() {
+    ui.logMsg(globalConfig['id']);
+    return true;
+}
+
+function openSecure() {
+    ui.logMsg(globalConfig['id']);
+    return true;
+}
+
+// TODO /open peerid
+function openSecure(toks) {
+    if(toks.length < 2) {
+        return false;
+    }
+
+    var targetId = toks[1];
+    if(!targetId.match(/^[a-zA-Z0-9]{64}$/)) {
+        return false;
+    }
+
+    net.setupSecure(globalConfig['pair'], targetId);
+    return true;
+}
+
+// TODO /msg peerid words words words
+function sendSecure(toks) {
+    if(toks.length < 3) {
+        return false;
+    }
+
+    var targetId = toks[1];
+    if(!targetId.match(/^[a-zA-Z0-9]{64}$/)) {
+        return false;
+    }
+
+    if(!(targetId in globalConfig['secretTable'])) {
+        return false;
+    }
+
+    var msg = toks.slice(2).join(' ');
+    net.sendPrivateMessage(globalConfig['pair'], targetId, msg);
+    return true;
+}
+
 function handleCommand(command) {
     var toks = command.split(' ');
     var cmd = toks[0];
     
     switch(cmd) {
+        case '/id':
+            return showId();
+        case '/open':
+            return openSecure(toks);
+        case '/msg':
+            return sendSecure(toks);
         case '/bootstrap':
         case '/bs':
             return bootstrap(toks);
@@ -166,6 +217,18 @@ function serverInit() {
                 break;
             case 'chat':
                 net.onChat(msgJSON);
+                break;
+            case 'setup_secure':
+                net.onSetupSecure(pair, msgJSON);
+                break;
+            case 'finalize_secure':
+                net.onFinalizeSecure(pair, msgJSON);
+                break;
+            case 'private_message':
+                net.onPrivateMessage(pair, msgJSON);
+                break;
+            case 'private_message_receipt':
+                net.onPrivateMessageReceipt(pair, msgJSON);
                 break;
             default:
                 break;
@@ -396,7 +459,7 @@ var id = utils.sha256(pair.public);
 ui.logMsg(`id: ${id}`);
 
 ui.logMsg('generating ephemeral keys...');
-var dh = crypto.createDiffieHellman(2048);
+var dh = crypto.createECDH('secp521r1');
 var dhPub = dh.generateKeys('hex');
 ui.logMsg(`initializing server...`);
 

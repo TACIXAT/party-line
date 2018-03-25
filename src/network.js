@@ -1,5 +1,6 @@
 var Utils = require('./utils.js');
 var Interface = require('./interface.js');
+var crypto = require('crypto');
 
 module.exports = function(globalConfig, handleCommand) {
     var ui = new Interface(globalConfig);
@@ -450,6 +451,7 @@ module.exports = function(globalConfig, handleCommand) {
 
         if(data['closest']) {
             // query suggested closest to replace peer that left
+            var idealIds = globalConfig['idealRoutingTable'];
             for(var idx in idealIds) {
                 var idealPeerId = idealIds[idx];
                 module.queryClosest(pair, data['closest'], idealPeerId);
@@ -467,17 +469,18 @@ module.exports = function(globalConfig, handleCommand) {
             ip: globalConfig['ext']['ip'],
             port: globalConfig['ext']['port'],
             key: globalConfig['pair'].public,
-        };
-
-        var data = {
-            type: 'connectivity_check',
-            from: peerSelf,
-        };
+        }
 
         for(var i = 0; i < 256; i++) {
             var peer = globalConfig['peerTable'][i];
             if(!peer || sent.indexOf(peer['id']) > -1) {
                 continue;
+            }
+
+            var data = {
+                type: 'connectivity_check',
+                from: peerSelf,
+                target: peer['id'],
             }
 
             module.send(peer, globalConfig['pair'], data);
@@ -494,7 +497,7 @@ module.exports = function(globalConfig, handleCommand) {
             // TODO: confirm
             // probably only need to do this once cause storage by reference
             var delta = now - peer['seen'];
-            if(delta > 60000) {
+            if(delta > 30000) {
                 ui.logMsg(`Removing peer ${peer['id']} (failed connectivity check)`);
                 utils.removePeer(peer['id']);
             }
@@ -502,7 +505,7 @@ module.exports = function(globalConfig, handleCommand) {
     }
 
     module.onConnectivityCheck = function(pair, msgJSON) {
-        if(!utils.validateMsg(msgJSON, ['from'])) {
+        if(!utils.validateMsg(msgJSON, ['from', 'target'])) {
             return;
         }
 
@@ -511,6 +514,11 @@ module.exports = function(globalConfig, handleCommand) {
         var sig = msg['sig'];
 
         var peer = data['from'];
+        var selfId = data['target'];
+
+        if(selfId !== globalConfig['id']) {
+            return;
+        }
 
         var keys = ['id', 'key', 'ip', 'port'];
         for(var idx in keys) {
@@ -695,7 +703,7 @@ module.exports = function(globalConfig, handleCommand) {
         module.floodReplay(msgJSON);
     }
 
-    module.route = function(targetId) {
+    module.route = function(targetId, pair, data) {
         var closestPeer = utils.findClosest(globalConfig['peerTable'], targetId);
 
         if(!closestPeer) {
@@ -709,18 +717,14 @@ module.exports = function(globalConfig, handleCommand) {
         // A: send dhPubkey, prime, generator
         var dh = globalConfig['dh'];
         var dhPubkey = dh.getPublicKey('hex');
-        var prime = dh.getPrime('hex');
-        var generator = dh.getGenerator('hex');
         var data = {
             type: 'setup_secure',
-            target: peerId,
+            target: targetId,
             dhKey: dhPubkey,
-            prime: prime,
-            generator: generator,
             key: pair.public,
         }
 
-        module.route(peerId, pair, data);
+        module.route(targetId, pair, data);
     }
 
     module.forward = function(msgJSON, data) {
@@ -729,7 +733,7 @@ module.exports = function(globalConfig, handleCommand) {
         if(!closestPeer) {
             // TODO: send routing failed
             return;
-        }            
+        }
 
         var targetIdBuf = Buffer.from(data['target'], 'hex');
         var selfDist = utils.bufferXor(Buffer.from(peerSelf['id'], 'hex'), targetIdBuf);
@@ -743,7 +747,7 @@ module.exports = function(globalConfig, handleCommand) {
     }
 
     module.onSetupSecure = function(pair, msgJSON) {
-        if(!utils.validateMsg(msgJSON, ['target', 'dhKey', 'prime', 'generator', 'key'])) {
+        if(!utils.validateMsg(msgJSON, ['target', 'dhKey', 'key'])) {
             return;
         }
 
@@ -766,23 +770,18 @@ module.exports = function(globalConfig, handleCommand) {
         var peerId = utils.sha256(peerPubkey);
         globalConfig['keyTable'][peerId] = peerPubkey;
 
-        var prime = data['prime'];
-        var generator = data['generator'];
         var dhKeyPeer = data['dhKey'];
-        // B: createDiffieHellman(prime, generator)
-        var dhTmp = crypto.createDiffieHellman(prime, generator);
-        // B: generateKeys()
-        var dhKeyTmp = dhTmp.generateKeys();
+        var dh = globalConfig['dh'];
         // B: computeSecret
-        var sharedSecret = dhTmp.computeSecret(dhKeyPeer);
+        var sharedSecret = dh.computeSecret(dhKeyPeer, 'hex');
 
-        globalConfig['secretTable'][peerId] = sharedSecret;
+        globalConfig['secretTable'][peerId] = utils.sha256(sharedSecret);
         
         // B: send dhPubkey
         var data = {
             type: 'finalize_secure',
             target: peerId,
-            dhKey: dhKeyTmp,
+            dhKey: dh.getPublicKey('hex'),
             key: pair.public,
         }
 
@@ -800,12 +799,11 @@ module.exports = function(globalConfig, handleCommand) {
 
         if(data['target'] !== globalConfig['id']) {
             module.forward(msgJSON, data);
-            return;
+            return
         }
 
         var peerPubkey = data['key'];
         var dataIntegrity = utils.verify(peerPubkey, sig, msg['data']);
-
         if(!dataIntegrity) {
             return;
         }
@@ -816,9 +814,105 @@ module.exports = function(globalConfig, handleCommand) {
         // A: computeSecret
         var dh = globalConfig['dh'];
         var dhKeyPeer = data['dhKey'];
-        var sharedSecret = dh.computeSecret(dhKeyPeer);
+        var sharedSecret = dh.computeSecret(dhKeyPeer, 'hex');
 
-        globalConfig['secretTable'][peerId] = sharedSecret;
+        globalConfig['secretTable'][peerId] = utils.sha256(sharedSecret);
+    }
+
+    module.sendPrivateMessage = function(pair, peerId, msg) {
+        var b64 = utils.encryptMessage(globalConfig['secretTable'][peerId], msg);
+        var data = {
+            type: 'private_message',
+            enc: b64,
+            target: peerId,
+            id: globalConfig['id'],
+            ts: Date.now(),
+        }
+        module.route(peerId, pair, data);
+    }
+
+    module.onPrivateMessage = function(pair, msgJSON) {
+        if(!utils.validateMsg(msgJSON, ['enc', 'target', 'id', 'ts'])) {
+            return;
+        }
+
+        var msg = JSON.parse(msgJSON);
+        var data = JSON.parse(msg['data']);
+        var sig = msg['sig'];
+
+        if(data['target'] !== globalConfig['id']) {
+            module.forward(msgJSON, data);
+            return;
+        }
+
+        var peerId = data['id'];
+        if(!(peerId in globalConfig['secretTable']) || !(peerId in globalConfig['keyTable'])) {
+            return;
+        }
+
+        var peerPubkey = globalConfig['keyTable'][peerId];
+        var dataIntegrity = utils.verify(peerPubkey, sig, msg['data']);
+        if(!dataIntegrity) {
+            return;
+        }
+
+        var sharedSecret = globalConfig['secretTable'][peerId];
+        var enc = data['enc'];
+        var dec = utils.decryptMessage(sharedSecret, enc);
+        data['content'] = dec;
+        data['verified'] = true;
+        data['secure'] = true;
+
+        utils.addChat(data);
+
+        var responseData = {
+            type: 'private_message_receipt',
+            target: data['id'],
+            id: globalConfig['id'],
+            ts: data['ts'],
+            enc: data['enc'],
+        }
+
+        module.route(data['id'], pair, responseData);
+    }
+
+    module.onPrivateMessageReceipt = function(pair, msgJSON) {
+        if(!utils.validateMsg(msgJSON, ['enc', 'target', 'id', 'ts'])) {
+            return;
+        }
+
+        var msg = JSON.parse(msgJSON);
+        var data = JSON.parse(msg['data']);
+        var sig = msg['sig'];
+
+        if(data['target'] !== globalConfig['id']) {
+            module.forward(msgJSON, data);
+            return;
+        }
+
+        var peerId = data['id'];
+        if(!(peerId in globalConfig['secretTable']) || !(peerId in globalConfig['keyTable'])) {
+            return;
+        }
+
+        var peerPubkey = globalConfig['keyTable'][peerId];
+        var dataIntegrity = utils.verify(peerPubkey, sig, msg['data']);
+        if(!dataIntegrity) {
+            return;
+        }
+
+        var sharedSecret = globalConfig['secretTable'][peerId];
+        var enc = data['enc'];
+        var dec = utils.decryptMessage(sharedSecret, enc);
+        data['content'] = dec;
+        data['verified'] = true;
+        data['secure'] = true;
+
+        // this is a read receipt from us, so swap the target and id so it shows right
+        data['target'] = data['id'];
+        data['id'] = globalConfig['id'];
+
+        utils.addChat(data);
     }
 
     return module;

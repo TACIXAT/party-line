@@ -2,6 +2,33 @@ var crypto = require('crypto');
 
 module.exports = function(globalConfig, net, ui) {
 
+    module.decryptMessage = function(key, msg) {
+        // b64 decode
+        var algorithm = 'AES-256-CFB';
+        var enc = Buffer.from(msg, 'base64');
+        key = Buffer.from(key, 'hex');
+        var iv = enc.slice(0, 16);
+        var enc = enc.slice(16);
+        // decrypt with channel secret
+        var decipher = crypto.createDecipheriv(algorithm, key, iv);
+        var dec = Buffer.concat([decipher.update(enc), decipher.final()]);
+        return dec.toString();
+    }
+
+    module.encryptMessage = function(key, msg) {
+        var algorithm = 'AES-256-CFB';
+        key = Buffer.from(key, 'hex');
+        var iv = crypto.randomBytes(16);
+        var cipher = crypto.createCipheriv(algorithm, key, iv);
+        var enc = cipher.update(msg);
+        // b64 encode
+        enc = Buffer.concat([enc, cipher.final()]);
+        enc = Buffer.concat([iv, enc]);
+        var b64 = enc.toString('base64');
+
+        return b64;
+    }
+
     module.sha256 = function(data) {
         return crypto.createHash('sha256').update(data).digest('hex');
     }
@@ -197,6 +224,7 @@ module.exports = function(globalConfig, net, ui) {
     module.removePeer = function(peerId, closest) {
         // check update routing table
         delete globalConfig['keyTable'][peerId];
+        delete globalConfig['secretTable'][peerId];
         var idealIds = module.updateTableRemove(peerId);
 
         var tableEmpty = globalConfig['peerTable'].filter(function(ea) { return ea }).length == 0;
@@ -314,6 +342,7 @@ module.exports = function(globalConfig, net, ui) {
             ts: data['ts'],
             content: data['content'],
             verified: data['verified'],
+            secure: data['secure'],
             time: Date.now(),
         }
 
@@ -327,8 +356,15 @@ module.exports = function(globalConfig, net, ui) {
         var s = d.getSeconds().toString();
         s = s.length == 1 ? '0' + s : s;
 
-        var time = `${h}:${m}:${s}`
-        ui.logMsg(`${time} ${chat['verified'] ? '(✔)' : '(✖)'} ${data['id'].substr(64-6, 6)}: ${data['content']}`);
+        var time = `${h}:${m}:${s}`;
+        var verified = `${chat['verified'] ? '(✔)' : '(✖)'}`
+        var fromId = data['id'].substr(64-6, 6);
+        if(!chat['secure']) {
+            ui.logMsg(`${time} ${verified} ${fromId}: ${data['content']}`);
+        } else {
+            var selfId = data['target'].substr(64-6, 6);
+            ui.logMsg(`${time} ${verified} ${fromId} -> ${selfId}: ${data['content']}`);
+        }
     }
 
     return module;
