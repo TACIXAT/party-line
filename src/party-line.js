@@ -388,6 +388,7 @@ ui.start();
 // var stdin = process.openStdin();
 globalConfig['peerTable'] = new Array(256);
 globalConfig['keyTable'] = {};
+globalConfig['secretTable'] = {};
 
 ui.logMsg('generating keypair...');
 var pair = keypair({bits: 2048}); 

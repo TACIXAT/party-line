@@ -713,6 +713,7 @@ module.exports = function(globalConfig, handleCommand) {
         var generator = dh.getGenerator('hex');
         var data = {
             type: 'setup_secure',
+            target: peerId,
             dhKey: dhPubkey,
             prime: prime,
             generator: generator,
@@ -722,13 +723,38 @@ module.exports = function(globalConfig, handleCommand) {
         module.route(peerId, pair, data);
     }
 
+    module.forward = function(msgJSON, data) {
+        var closestPeer = utils.findClosest(globalConfig['peerTable'], data['target']);
+
+        if(!closestPeer) {
+            // TODO: send routing failed
+            return;
+        }            
+
+        var targetIdBuf = Buffer.from(data['target'], 'hex');
+        var selfDist = utils.bufferXor(Buffer.from(peerSelf['id'], 'hex'), targetIdBuf);
+        closestDist = utils.bufferXor(Buffer.from(closestPeer['id'], 'hex'), targetIdBuf);
+        if(selfDist.compare(closestDist) < 0) {
+            // TODO: send routing failed
+            return;
+        }
+
+        module.sendReplay(closestPeer, msgJSON);
+    }
+
     module.onSetupSecure = function(pair, msgJSON) {
-        if(!utils.validateMsg(msgJSON, ['dhKey', 'prime', 'generator', 'key'])) {
+        if(!utils.validateMsg(msgJSON, ['target', 'dhKey', 'prime', 'generator', 'key'])) {
             return;
         }
 
         var msg = JSON.parse(msgJSON);
         var data = JSON.parse(msg['data']);
+
+        if(data['target'] !== globalConfig['id']) {
+            module.forward(msgJSON, data)
+            return;
+        }
+
         var sig = msg['sig'];
         var peerPubkey = data['key'];
 
@@ -750,11 +776,12 @@ module.exports = function(globalConfig, handleCommand) {
         // B: computeSecret
         var sharedSecret = dhTmp.computeSecret(dhKeyPeer);
 
-        // TODO: add secret to secret table or something
+        globalConfig['secretTable'][peerId] = sharedSecret;
         
         // B: send dhPubkey
         var data = {
             type: 'finalize_secure',
+            target: peerId,
             dhKey: dhKeyTmp,
             key: pair.public,
         }
@@ -770,9 +797,15 @@ module.exports = function(globalConfig, handleCommand) {
         var msg = JSON.parse(msgJSON);
         var data = JSON.parse(msg['data']);
         var sig = msg['sig'];
-        var peerPubkey = data['key'];
 
+        if(data['target'] !== globalConfig['id']) {
+            module.forward(msgJSON, data);
+            return;
+        }
+
+        var peerPubkey = data['key'];
         var dataIntegrity = utils.verify(peerPubkey, sig, msg['data']);
+
         if(!dataIntegrity) {
             return;
         }
@@ -785,7 +818,7 @@ module.exports = function(globalConfig, handleCommand) {
         var dhKeyPeer = data['dhKey'];
         var sharedSecret = dh.computeSecret(dhKeyPeer);
 
-        // TODO: add secret to secret table or something
+        globalConfig['secretTable'][peerId] = sharedSecret;
     }
 
     return module;
