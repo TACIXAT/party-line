@@ -153,6 +153,8 @@ function handleCommand(command) {
         case '/exit':
         case '/quit':
             return net.leave(pair, unmapPorts);
+        case '/clean':
+            return net.leave(pair, unmapPorts, true);
         case '/help':
             return showHelp();
         default:
@@ -169,6 +171,15 @@ function handleCommand(command) {
 function serverInit() {
     ui.logMsg('setting up socket...');
     socket.on('error', (err) => {
+        if(err.code === 'EADDRINUSE') {
+            ui.logMsg('error: address in use...');
+            ui.logMsg('disregard the last bootstrap info!');
+            ui.logMsg('retrying...');
+            init(0);
+            return;
+        }
+
+        ui.stop();
         console.error(`server error:\n${err.stack}`);
         socket.close();
         process.exit(1);
@@ -239,7 +250,7 @@ function serverInit() {
         const address = socket.address();
     });
 
-    socket.bind(globalConfig['int']['port']);
+    socket.bind({port: globalConfig['int']['port']});
 
     globalConfig['socket'] = socket;
 
@@ -280,7 +291,7 @@ function getIp() {
 
 function holePunch(results) {
     // find unused port
-    var udpResults = results.slice(0,20).filter(function(ea) { 
+    var udpResults = results.filter(function(ea) { 
         return ea['protocol'] === 'udp';
     });
 
@@ -328,16 +339,24 @@ function holePunch(results) {
     }, function(err) {
         killError(err);
         ui.logMsg('mapped port...');
-        init();
+        init(port);
     });
 }
 
-function init() {
+function init(forcePort) {
+    ui.logMsg(`forcePort: ${forcePort}`);
     if(ip.address().match(/(^127\.)|(^192\.168\.)|(^10\.)|(^172\.1[6-9]\.)|(^172\.2[0-9]\.)|(^172\.3[0-1]\.)|(^::1$)|(^[fF][cCdD])/)) {
-        ui.logMsg('attempting upnp...')
+        ui.logMsg('trying upnp...')
         upnpClient.getMappings(function(err, results) {
             killError(err);
             var found = false;
+
+            if(forcePort === 0) {
+                ui.logMsg('getting a new port');
+                holePunch(results, forcePort);
+                return;
+            }
+
             for(ea in results) {
                 var description = results[ea]['description'];
                 var privateIp = results[ea]['private']['host'];
@@ -345,6 +364,10 @@ function init() {
                 var udp = results[ea]['protocol'] === 'udp';
 
                 if(enabled && udp && description == 'Party line!' &&  privateIp == globalConfig['int']['ip']) {
+                    if(forcePort && forcePort !== 0 && results[ea]['public']['port'] !== forcePort) {
+                        continue;
+                    }
+
                     found = true;
                     ui.logMsg('found already open port');
                     globalConfig['int']['port'] = results[ea]['private']['port'];
@@ -371,7 +394,7 @@ function init() {
     // nat-pmp when the need arises, upnp seems to work everywhere I've tried
 }
 
-function unmapPorts() {
+function unmapPorts(cleanup) {
     if(ip.address().match(/(^127\.)|(^192\.168\.)|(^10\.)|(^172\.1[6-9]\.)|(^172\.2[0-9]\.)|(^172\.3[0-1]\.)|(^::1$)|(^[fF][cCdD])/)) {
         ui.logMsg('unmapping ports...');
         upnpClient.getMappings(function(err, results) {
@@ -383,6 +406,10 @@ function unmapPorts() {
                 var port = results[ea]['public']['port'];
 
                 if(udp && description == 'Party line!' && privateIp == globalConfig['int']['ip']) {
+                    if(!cleanup && globalConfig['ext']['port'] !== port) {
+                        continue;
+                    }
+
                     ui.logMsg(`unmapping ${port}...`);
                     if(!('unmap' in globalConfig)) {
                         globalConfig['unmap'] = 0;
@@ -474,16 +501,4 @@ globalConfig['chatMessagesReceived'] = {};
 
 // TODO: create image with fingerprint
 
-// ui.logMsg('generating keys...');
-// var dh2 = crypto.createDiffieHellman(dh.getPrime(), dh.getGenerator());
-// var pubKey2 = dh2.generateKeys('hex');
-// ui.logMsg(`pubkey ${pubKey2}`);
-// // id is sha512 of public key
-// var fingerprint2 = crypto.createHash('sha256').update(Buffer.from(pubKey2, 'hex')).digest('hex');
-// ui.logMsg(`fingerprint: ${fingerprint2}`);
-
-// dh2.computeSecret(pubKey, 'hex');
-// var sessionSecret = dh.computeSecret(pubKey2, 'hex');
-
 init();
-// listMappings();

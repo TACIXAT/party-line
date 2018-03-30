@@ -99,7 +99,7 @@ module.exports = function(globalConfig, handleCommand) {
         }
 
         if(data['bsId'] !== globalConfig['id']) {
-            ui.logMsg('bsId no match', bsId, globalConfig['id']);
+            ui.logMsg(`bsId no match ${data['bsId']} !== ${globalConfig['id']}`);
             return;
         }
 
@@ -384,7 +384,7 @@ module.exports = function(globalConfig, handleCommand) {
     }
 
     // leave
-    module.leave = function(pair, unmapPorts) {
+    module.leave = function(pair, unmapPorts, cleanup) {
         // prevent replies to anyone
         module.onJoin = function() { return; };
         module.onVerify = function() { return; };
@@ -414,7 +414,7 @@ module.exports = function(globalConfig, handleCommand) {
             sent.push(peer['id']);
         }
 
-        unmapPorts();
+        unmapPorts(cleanup);
         return true;
     }
 
@@ -603,6 +603,7 @@ module.exports = function(globalConfig, handleCommand) {
             return;
         }
 
+        ui.logMsg(`querying key for ${targetId.substr(64-6, 6)} to ${closestPeer['id'].substr(64-6, 6)}`)
         module.send(closestPeer, globalConfig['pair'], data);
     }
 
@@ -620,13 +621,16 @@ module.exports = function(globalConfig, handleCommand) {
         var data = JSON.parse(msg['data']);
         var sig = msg['sig'];
 
-        if(data['id'] === globalConfig['id']) {
+        ui.logMsg(`on query key for ${data['id'].substr(64-6, 6)}`)
+
+        if(data['target'] === globalConfig['id']) {
             // get key
             var responseData = {
                 type: 'response_key',
                 key: pair.public,
             }
             
+            ui.logMsg(`sending response key to ${data['id'].substr(64-6, 6)}`)
             module.send(data, pair, responseData);
         } else {
             var closestPeer = utils.findClosest(globalConfig['peerTable'], data['target']);
@@ -636,12 +640,13 @@ module.exports = function(globalConfig, handleCommand) {
             }            
 
             var targetIdBuf = Buffer.from(data['target'], 'hex');
-            var selfDist = utils.bufferXor(Buffer.from(peerSelf['id'], 'hex'), targetIdBuf);
+            var selfDist = utils.bufferXor(Buffer.from(globalConfig['id'], 'hex'), targetIdBuf);
             closestDist = utils.bufferXor(Buffer.from(closestPeer['id'], 'hex'), targetIdBuf);
             if(selfDist.compare(closestDist) < 0) {
                 return;
             }
 
+            ui.logMsg(`forwarding query key for ${data['target'].substr(64-6, 6)} to ${closestPeer['id'].substr(64-6, 6)}`)
             module.sendReplay(closestPeer, msgJSON);
         }
 
@@ -658,6 +663,7 @@ module.exports = function(globalConfig, handleCommand) {
 
         // hash key
         var peerId = utils.sha256(data['key']);
+        ui.logMsg(`response key for ${peerId.substr(64-6, 6)}`);
 
         // validate data
         if(!utils.verify(data['key'], sig, msg['data'])) {
@@ -688,7 +694,6 @@ module.exports = function(globalConfig, handleCommand) {
             data['verified'] = true;
         } else if(!(peerId in globalConfig['keyTable'])) {
             data['verified'] = false;
-            module.queryKey(peerId);
         } else if(!utils.verify(globalConfig['keyTable'][peerId], sig, msg['data'])) {
             return;
         } else {
@@ -697,6 +702,10 @@ module.exports = function(globalConfig, handleCommand) {
 
         if(data['content'] == '' || utils.checkReceivedChat(data)) {
             return;
+        }
+
+        if(!data['verified']) {
+            module.queryKey(peerId);
         }
 
         utils.addChat(data);

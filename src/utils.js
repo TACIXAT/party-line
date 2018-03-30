@@ -208,11 +208,12 @@ module.exports = function(globalConfig, net, ui) {
                 delCount++;
                 delete globalConfig['peerTable'][idx];
                 continue;
-            } else {
-                ui.logMsg(`replaced entry ${idx}`);
-                ui.logMsg(`with ${closest.id}`);
-                ui.logMsg(`was ${peer['id']}`);
             }
+            // else {
+            //     ui.logMsg(`replaced entry ${idx}`);
+            //     ui.logMsg(`with ${closest.id}`);
+            //     ui.logMsg(`was ${peer['id']}`);
+            // }
 
             globalConfig['peerTable'][idx] = closest;
         }
@@ -348,6 +349,7 @@ module.exports = function(globalConfig, net, ui) {
 
         globalConfig['chatMessages'].push(chat);
         globalConfig['chatMessages'].shift();
+
         var d = new Date(chat['time']);
         var h = d.getHours().toString();
         h = h.length == 1 ? '0' + h : h;
@@ -357,8 +359,9 @@ module.exports = function(globalConfig, net, ui) {
         s = s.length == 1 ? '0' + s : s;
 
         var time = `${h}:${m}:${s}`;
-        var verified = `${chat['verified'] ? '(✔)' : '(✖)'}`
+        var verified = `${chat['verified'] ? '(✔)' : '(✖)'}`;
         var fromId = data['id'].substr(64-6, 6);
+
         if(!chat['secure']) {
             ui.logMsg(`${time} ${verified} ${fromId}: ${data['content']}`);
         } else {
