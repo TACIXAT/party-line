@@ -4,6 +4,7 @@ var crypto = require('crypto');
 var natpmp = require('nat-pmp');
 var keypair = require('keypair');
 var natupnp = require('nat-upnp');
+var network = require('network');
 
 var Net = require('./network.js');
 var Utils = require('./utils.js');
@@ -175,6 +176,10 @@ function serverInit() {
             ui.logMsg('error: address in use...');
             ui.logMsg('disregard the last bootstrap info!');
             ui.logMsg('retrying...');
+            if(!('pmp_blacklist' in globalConfig)) {
+                globalConfig['pmp_blacklist'] = [];
+            }
+            globalConfig['pmp_blacklist'].push(globalConfig['ext']['port'])
             init(0);
             return;
         }
@@ -273,23 +278,33 @@ function serverInit() {
 function killError(err) {
     if(err) {
         ui.stop();
+        console.error('in killerror');
         console.error(err);
         process.exit(1);
     }
 }
 
 function getIp() {
-    upnpClient.externalIp(function(err, ip) {
-        if(err) {
+    if(!globalConfig['pmp']) {
+        upnpClient.externalIp(function(err, ip) {
             killError(err);
-        }
-        globalConfig['ext']['ip'] = ip;
-        ui.logMsg(ip);
-        serverInit();
-    });
+            globalConfig['ext']['ip'] = ip;
+            ui.logMsg(ip);
+            serverInit();
+        });
+    } else {
+        globalConfig['pmp_client'].externalIp(function (err, info) {
+            killError(err);
+            var ip = info.ip.join('.');
+            globalConfig['ext']['ip'] = ip;
+            ui.logMsg(ip);
+            serverInit();
+        });
+    }
+
 }
 
-function holePunch(results) {
+function selectPort(results) {
     // find unused port
     var udpResults = results.filter(function(ea) { 
         return ea['protocol'] === 'udp';
@@ -307,9 +322,14 @@ function holePunch(results) {
         return ea['private']['port'];
     });
 
+    var pmpBlacklist = [];
+    if(globalConfig['pmp'] && 'pmp_blacklist' in globalConfig) {
+        pmpBlacklist = globalConfig['pmp_blacklist'];
+    }
+
     var topPicks = [0x1337, 0xbeef, 0xdab, 0xbea7, 0xf00d, 0xc0de, 0x0bee, 0xdead, 0xbad, 0xdab0, 0xbee5, 0x539];
     var picks = topPicks.filter(function(ea) {
-        return !(ea in internalPorts) && !(ea in externalPorts);
+        return internalPorts.indexOf(ea) < 0 && externalPorts.indexOf(ea) < 0 && pmpBlacklist.indexOf(ea) < 0;
     });
 
     if(picks.length > 0) {
@@ -319,7 +339,7 @@ function holePunch(results) {
     } else {
         while(1) {
             var port = Math.floor(Math.random()*(65536-1025)) + 1025;
-            if(!(port in externalPorts) && !(port in internalPorts)) {
+            if(externalPorts.indexOf(port) < 0 && internalPorts.indexOf(port) < 0 && pmpBlacklist.indexOf(ea) < 0) {
                 globalConfig['ext']['port'] = port;
                 globalConfig['int']['port'] = port;    
                 break;
@@ -328,6 +348,11 @@ function holePunch(results) {
     }
 
     ui.logMsg('chose port', port);
+    return port;
+}
+
+function holePunch(results) {
+    var port = selectPort(results);
 
     upnpClient.portMapping({
         public: globalConfig['ext']['port'],
@@ -343,47 +368,84 @@ function holePunch(results) {
     });
 }
 
+function getMappings(forcePort) {
+    ui.logMsg('calling getMappings');
+    upnpClient.getMappings(function(err, results) {
+        if(err) {
+            ui.logMsg('upnp error!');
+            ui.logMsg('trying pmp...');
+            globalConfig['pmp'] = true;
+            init(forcePort);
+            return;
+        }
+
+        killError(err);
+        var found = false;
+
+        if(forcePort === 0) {
+            ui.logMsg('getting a new port');
+            holePunch(results, forcePort);
+            return;
+        }
+
+        for(ea in results) {
+            var description = results[ea]['description'];
+            var privateIp = results[ea]['private']['host'];
+            var enabled = results[ea]['enabled'];
+            var udp = results[ea]['protocol'] === 'udp';
+
+            if(enabled && udp && description == 'Party line!' &&  privateIp == globalConfig['int']['ip']) {
+                if(forcePort && forcePort !== 0 && results[ea]['public']['port'] !== forcePort) {
+                    continue;
+                }
+
+                found = true;
+                ui.logMsg('found already open port');
+                globalConfig['int']['port'] = results[ea]['private']['port'];
+                globalConfig['ext']['port'] = results[ea]['public']['port'];
+                break;
+            } 
+        } 
+
+        if(!found) {
+            ui.logMsg('open port not found, mapping');
+            holePunch(results);
+            return;
+        }
+        
+        getIp();
+    });
+}
+
 function init(forcePort) {
     ui.logMsg(`forcePort: ${forcePort}`);
     if(ip.address().match(/(^127\.)|(^192\.168\.)|(^10\.)|(^172\.1[6-9]\.)|(^172\.2[0-9]\.)|(^172\.3[0-1]\.)|(^::1$)|(^[fF][cCdD])/)) {
-        ui.logMsg('trying upnp...')
-        upnpClient.getMappings(function(err, results) {
-            killError(err);
-            var found = false;
+        if(globalConfig['pmp']) {
+            ui.logMsg('getting a new port');
+            var port = selectPort([]);
+            // get gateway
+            network.get_gateway_ip(function(err, info) {
+                killError(err);
+                globalConfig['int']['gateway'] = info;
+                var client = natpmp.connect(info);
+                globalConfig['pmp_client'] = client;
 
-            if(forcePort === 0) {
-                ui.logMsg('getting a new port');
-                holePunch(results, forcePort);
-                return;
-            }
-
-            for(ea in results) {
-                var description = results[ea]['description'];
-                var privateIp = results[ea]['private']['host'];
-                var enabled = results[ea]['enabled'];
-                var udp = results[ea]['protocol'] === 'udp';
-
-                if(enabled && udp && description == 'Party line!' &&  privateIp == globalConfig['int']['ip']) {
-                    if(forcePort && forcePort !== 0 && results[ea]['public']['port'] !== forcePort) {
-                        continue;
-                    }
-
-                    found = true;
-                    ui.logMsg('found already open port');
-                    globalConfig['int']['port'] = results[ea]['private']['port'];
-                    globalConfig['ext']['port'] = results[ea]['public']['port'];
-                    break;
-                } 
-            } 
-
-            if(!found) {
-                ui.logMsg('open port not found, mapping');
-                holePunch(results);
-                return;
-            }
-            
-            getIp();
-        });
+                client.portMapping({
+                    public: port, 
+                    private: port, 
+                    ttl: 7200,
+                    type: 'udp',
+                }, function(err, info) { 
+                    if(err) throw err; 
+                    globalConfig['int']['port'] = port; 
+                    globalConfig['ext']['port'] = port; 
+                    getIp();
+                });
+            });
+        } else {
+            ui.logMsg('trying upnp...');
+            getMappings(forcePort);
+        }
     } else {
         globalConfig['int']['port'] = 0xdab;
         globalConfig['ext']['port'] = 0xdab;
@@ -395,7 +457,8 @@ function init(forcePort) {
 }
 
 function unmapPorts(cleanup) {
-    if(ip.address().match(/(^127\.)|(^192\.168\.)|(^10\.)|(^172\.1[6-9]\.)|(^172\.2[0-9]\.)|(^172\.3[0-1]\.)|(^::1$)|(^[fF][cCdD])/)) {
+    var regexInternal = /(^127\.)|(^192\.168\.)|(^10\.)|(^172\.1[6-9]\.)|(^172\.2[0-9]\.)|(^172\.3[0-1]\.)|(^::1$)|(^[fF][cCdD])/;
+    if(ip.address().match(regexInternal) && !globalConfig['pmp']) {
         ui.logMsg('unmapping ports...');
         upnpClient.getMappings(function(err, results) {
             killError(err);
