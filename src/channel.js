@@ -9,7 +9,7 @@ module.exports = function(globalConfig, net, utils) {
     // invite = {invite: invite, channel: name, type: id/passphrase}
     var messages = [];
     
-    module.init(name, channelSecret) {
+    module.init = function(name, channelSecret) {
         if(!channelSecret) {
             this.name = `${name}.${globalConfig['id'].substr(64-6, 6)}`;
             this.channelSecret = crypto.randomBytes(32);
@@ -45,6 +45,7 @@ module.exports = function(globalConfig, net, utils) {
             name: name,
             type: type,
         }
+        return invite;
     }
 
     module.checkInvite = function(invite) {
@@ -52,8 +53,10 @@ module.exports = function(globalConfig, net, utils) {
         var nameBuf = Buffer.from(invite['name']);
         var code = util.sha256(Buffer.concat([channelSecret, nameBuf, keyBuf]));
         if(code == invite['code']) {
-            // success
+            return true;
         }
+
+        return false;
     }
 
     return module;

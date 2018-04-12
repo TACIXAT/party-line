@@ -9,6 +9,7 @@ var network = require('network');
 var Net = require('./network.js');
 var Utils = require('./utils.js');
 var Interface = require('./interface.js');
+var Channel = require('./channel.js');
 
 function bootstrap(toks) {
     var pair = globalConfig['pair'];
@@ -130,6 +131,29 @@ function sendSecure(toks) {
     return true;
 }
 
+function createChannel(toks) {
+    if(toks.length < 2) {
+        return false;
+    }
+
+    var name = toks[1];
+
+    var channel = Channel(globalConfig, net, utils);
+    channel.init(name);
+    globalConfig['channels'][channel.name] = channel;
+
+    return true;
+}
+
+function listChannels() {
+    var out = 'Channels: ';
+    for(var name in globalConfig['channels']) {
+        out += `${name} `
+    }
+    ui.logMsg(out);
+    return true;
+}
+
 function handleCommand(command) {
     var toks = command.split(' ');
     var cmd = toks[0];
@@ -141,6 +165,10 @@ function handleCommand(command) {
             return openSecure(toks);
         case '/msg':
             return sendSecure(toks);
+        case '/create':
+            return createChannel(toks);
+        case '/list':
+            return listChannels();
         case '/bootstrap':
         case '/bs':
             return bootstrap(toks);
@@ -537,6 +565,7 @@ var net = new Net(globalConfig, handleCommand);
 var utils = net.utils;
 var ui = net.ui;
 ui.start();
+ui.logMsg(`internal address ${ip.address()}`)
 
 // var stdin = process.openStdin();
 globalConfig['peerTable'] = new Array(256);
@@ -561,6 +590,7 @@ globalConfig['idealRoutingTable'] = utils.calculateIdealRoutingTable(globalConfi
 globalConfig['peerCandidates'] = [];
 globalConfig['chatMessages'] = new Array(512);
 globalConfig['chatMessagesReceived'] = {};
+globalConfig['channels'] = {}
 
 // TODO: create image with fingerprint
 
