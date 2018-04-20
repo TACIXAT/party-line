@@ -59,16 +59,6 @@ function dumpKeyTable() {
     return true;
 }
 
-// create named chat
-
-// join chat
-// exchange public keys 
-// do dh key exchange
-// distribute chat id and shared secret
-// distribute participant list
-
-// new peer announces / exchanges keys with participants
-
 function showHelp() {
     ui.logMsg('==== HELPFUL ====');
     ui.logMsg('');
@@ -96,7 +86,6 @@ function openSecure() {
     return true;
 }
 
-// TODO /open peerid
 function openSecure(toks) {
     if(toks.length < 2) {
         return false;
@@ -111,7 +100,6 @@ function openSecure(toks) {
     return true;
 }
 
-// TODO /msg peerid words words words
 function sendSecure(toks) {
     if(toks.length < 3) {
         return false;
@@ -131,6 +119,15 @@ function sendSecure(toks) {
     return true;
 }
 
+// join chat
+// exchange public keys 
+// do dh key exchange
+// distribute chat id and shared secret
+// distribute participant list
+
+// new peer announces / exchanges keys with participants
+
+// create named chat
 function createChannel(toks) {
     if(toks.length < 2) {
         return false;
@@ -141,7 +138,7 @@ function createChannel(toks) {
     var channel = Channel(globalConfig, net, utils);
     channel.init(name);
     globalConfig['channels'][channel.name] = channel;
-
+    ui.logMsg(`Created channel ${channel.name}`);
     return true;
 }
 
@@ -151,6 +148,35 @@ function listChannels() {
         out += `${name} `
     }
     ui.logMsg(out);
+    return true;
+}
+
+function createChannelInvite(toks) {
+    if(toks.length < 4) {
+        ui.logMsg(`invalid toks length: ${toks.length}`);
+        return false;
+    }
+
+    var name = toks[1];
+    if(!(name in globalConfig['channels'])) {
+        ui.logMsg(`invalid channel: ${name}`);
+        return false;
+    }
+
+    var channel = globalConfig['channels'][name];
+    
+    var type = toks[2];
+    if(type != 'passphrase' && type != 'id') {
+        ui.logMsg(`invalid type: ${type}`);
+        return false;
+    }
+
+    var key = toks[3];
+    var invite = channel.createInvite(type, key);
+    ui.logMsg(`invite name: ${invite['name']}`);
+    ui.logMsg(`invite type: ${invite['type']}`);
+    ui.logMsg(`invite code: ${invite['code']}`);
+
     return true;
 }
 
@@ -167,6 +193,8 @@ function handleCommand(command) {
             return sendSecure(toks);
         case '/create':
             return createChannel(toks);
+        case '/invite':
+            return createChannelInvite(toks);
         case '/list':
             return listChannels();
         case '/bootstrap':

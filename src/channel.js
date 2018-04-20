@@ -38,11 +38,12 @@ module.exports = function(globalConfig, net, utils) {
     module.createInvite = function(type, key) {
         // hash(channelSecret + name + key)
         // type is 'id' or 'pass'
-        var nameBuf = Buffer.from(name);
+        var nameBuf = Buffer.from(this.name);
         var keyBuf = Buffer.from(key);
+        var typeBuf = Buffer.from(type);
         var invite = {
-            code: util.sha256(Buffer.concat([channelSecret, nameBuf, keyBuf])),
-            name: name,
+            code: utils.sha256(Buffer.concat([this.channelSecret, nameBuf, typeBuf, keyBuf])),
+            name: this.name,
             type: type,
         }
         return invite;
@@ -50,13 +51,38 @@ module.exports = function(globalConfig, net, utils) {
 
     module.checkInvite = function(invite) {
         var keyBuf = Buffer.from(invite['key']);
-        var nameBuf = Buffer.from(invite['name']);
-        var code = util.sha256(Buffer.concat([channelSecret, nameBuf, keyBuf]));
+        var nameBuf = Buffer.from(this.name);
+        var typeBuf = Buffer.from(invite['type']);
+        var code = utils.sha256(Buffer.concat([this.channelSecret, nameBuf, typeBuf, keyBuf]));
         if(code == invite['code']) {
             return true;
         }
 
         return false;
+    }
+
+    module.sendInvite = function(id, type, key) {
+        // send an invite to a user
+    }
+
+    module.announce = function() {
+        // announce self to channel
+    }
+
+    module.onAnnounce = function(pair, msgJSON) {
+        // add peer to peer list
+    }
+
+    module.sendMessage = function() {
+        // send message to peer list
+    }
+
+    module.onMessage = function() {
+        // display message then forward
+    }
+
+    module.propagateMessage = function() {
+        // forward message to peers
     }
 
     return module;

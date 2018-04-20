@@ -924,5 +924,16 @@ module.exports = function(globalConfig, handleCommand) {
         utils.addChat(data);
     }
 
+    module.onInvited = function(pair, msgJSON) {
+        // add invite to list of invites
+    }
+
+    module.onRequestJoin = function(pair, msgJSON) {
+        // check invite
+        // set up secure
+        // send channel info
+            // name, secret, nearest N peers
+    }
+
     return module;
 }
