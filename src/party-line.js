@@ -424,6 +424,8 @@ function holePunch(results) {
     });
 }
 
+
+// TODO: add expected port since some routers don't support descr
 function getMappings(forcePort) {
     ui.logMsg('calling getMappings');
     upnpClient.getMappings(function(err, results) {
@@ -450,7 +452,8 @@ function getMappings(forcePort) {
             var enabled = results[ea]['enabled'];
             var udp = results[ea]['protocol'] === 'udp';
 
-            if(enabled && udp && description == 'Party line!' &&  privateIp == globalConfig['int']['ip']) {
+            // if(enabled && udp && description == 'Party line!' && privateIp == globalConfig['int']['ip']) {
+            if(enabled && udp && privateIp == globalConfig['int']['ip']) {
                 if(forcePort && forcePort !== 0 && results[ea]['public']['port'] !== forcePort) {
                     continue;
                 }
@@ -524,7 +527,8 @@ function unmapPorts(cleanup) {
                 var udp = results[ea]['protocol'] === 'udp';
                 var port = results[ea]['public']['port'];
 
-                if(udp && description == 'Party line!' && privateIp == globalConfig['int']['ip']) {
+                // if(udp && description == 'Party line!' && privateIp == globalConfig['int']['ip']) {
+                if(udp && privateIp == globalConfig['int']['ip']) {
                     if(!cleanup && globalConfig['ext']['port'] !== port) {
                         continue;
                     }
