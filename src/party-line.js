@@ -151,8 +151,8 @@ function listChannels() {
     return true;
 }
 
-function createChannelInvite(toks) {
-    if(toks.length < 4) {
+function sendChannelInvite(toks) {
+    if(toks.length < 3) {
         ui.logMsg(`invalid toks length: ${toks.length}`);
         return false;
     }
@@ -164,19 +164,8 @@ function createChannelInvite(toks) {
     }
 
     var channel = globalConfig['channels'][name];
-    
-    var type = toks[2];
-    if(type != 'passphrase' && type != 'id') {
-        ui.logMsg(`invalid type: ${type}`);
-        return false;
-    }
-
-    var key = toks[3];
-    var invite = channel.createInvite(type, key);
-    ui.logMsg(`invite name: ${invite['name']}`);
-    ui.logMsg(`invite type: ${invite['type']}`);
-    ui.logMsg(`invite code: ${invite['code']}`);
-
+    var userId = toks[2];
+    var invite = channel.sendInvite(userId);
     return true;
 }
 
@@ -194,7 +183,7 @@ function handleCommand(command) {
         case '/create':
             return createChannel(toks);
         case '/invite':
-            return createChannelInvite(toks);
+            return sendChannelInvite(toks);
         case '/list':
             return listChannels();
         case '/bootstrap':
@@ -301,6 +290,9 @@ function serverInit() {
                 break;
             case 'private_message_receipt':
                 net.onPrivateMessageReceipt(pair, msgJSON);
+                break;
+            case 'private_invite':
+                net.onPrivateInvite(pair, msgJSON);
                 break;
             default:
                 break;

@@ -745,7 +745,7 @@ module.exports = function(globalConfig, handleCommand) {
         }
 
         var targetIdBuf = Buffer.from(data['target'], 'hex');
-        var selfDist = utils.bufferXor(Buffer.from(peerSelf['id'], 'hex'), targetIdBuf);
+        var selfDist = utils.bufferXor(Buffer.from(globalConfig['id'], 'hex'), targetIdBuf);
         closestDist = utils.bufferXor(Buffer.from(closestPeer['id'], 'hex'), targetIdBuf);
         if(selfDist.compare(closestDist) < 0) {
             // TODO: send routing failed
@@ -829,6 +829,10 @@ module.exports = function(globalConfig, handleCommand) {
     }
 
     module.sendPrivateMessage = function(pair, peerId, msg) {
+        if(!(peerId in globalConfig['secretTable'])) {
+            return false;
+        }
+
         var b64 = utils.encryptMessage(globalConfig['secretTable'][peerId], msg);
         var data = {
             type: 'private_message',
@@ -924,15 +928,36 @@ module.exports = function(globalConfig, handleCommand) {
         utils.addChat(data);
     }
 
-    module.onInvited = function(pair, msgJSON) {
-        // add invite to list of invites
-    }
+    module.onPrivateInvite = function(pair, msgJSON) {
+        if(!utils.validateMsg(msgJSON, ['enc', 'target', 'id', 'ts'])) {
+            return;
+        }
 
-    module.onRequestJoin = function(pair, msgJSON) {
-        // check invite
-        // set up secure
-        // send channel info
-            // name, secret, nearest N peers
+        var msg = JSON.parse(msgJSON);
+        var data = JSON.parse(msg['data']);
+        var sig = msg['sig'];
+
+        if(data['target'] !== globalConfig['id']) {
+            module.forward(msgJSON, data);
+            return;
+        }
+
+        var peerId = data['id'];
+        if(!(peerId in globalConfig['secretTable']) || !(peerId in globalConfig['keyTable'])) {
+            return;
+        }
+
+        var peerPubkey = globalConfig['keyTable'][peerId];
+        var dataIntegrity = utils.verify(peerPubkey, sig, msg['data']);
+        if(!dataIntegrity) {
+            return;
+        }
+
+        var sharedSecret = globalConfig['secretTable'][peerId];
+        var enc = data['enc'];
+        var dec = utils.decryptMessage(sharedSecret, enc);
+        ui.logMsg(`INVITE: ${dec}`);
+        var invite = JSON.parse(dec);
     }
 
     return module;

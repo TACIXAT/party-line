@@ -1,21 +1,21 @@
 var crypto = require('crypto');
 
 module.exports = function(globalConfig, net, utils) {
-    var name = '';
-    var channelSecret;
-    var peers = [];
-    // peer = {nick: '', id: ''}
-    var invites = [];
-    // invite = {invite: invite, channel: name, type: id/passphrase}
-    var messages = [];
-    
-    module.init = function(name, channelSecret) {
+    module.init = function(name, channelSecret, peers) {
+        this.peers = [];
+        this.messages = [];
+        this.name = '';
+        
         if(!channelSecret) {
             this.name = `${name}.${globalConfig['id'].substr(64-6, 6)}`;
             this.channelSecret = crypto.randomBytes(32);
         } else {
             this.name = name;
             this.channelSecret = channelSecret;
+            if(peers) {
+                this.peers = peers;
+                module.announce();
+            }
         }
     }
 
@@ -35,34 +35,30 @@ module.exports = function(globalConfig, net, utils) {
         }
     }
 
-    module.createInvite = function(type, key) {
-        // hash(channelSecret + name + key)
-        // type is 'id' or 'pass'
-        var nameBuf = Buffer.from(this.name);
-        var keyBuf = Buffer.from(key);
-        var typeBuf = Buffer.from(type);
+    module.sendInvite = function(peerId) {
+        if(!(peerId in globalConfig['secretTable'])) {
+            return false;
+        }
+
+        // make a copy?        
+        var channelPeerList = this.peers.map(function(ea) { return ea; });
+        channelPeerList.push(globalConfig['id']);
         var invite = {
-            code: utils.sha256(Buffer.concat([this.channelSecret, nameBuf, typeBuf, keyBuf])),
+            secret: this.channelSecret.toString('hex'),
+            peers: channelPeerList,
             name: this.name,
-            type: type,
+        };
+
+        var b64 = utils.encryptMessage(globalConfig['secretTable'][peerId], JSON.stringify(invite));
+
+        var data = {
+            type: 'private_invite',
+            enc: b64,
+            target: peerId,
+            id: globalConfig['id'],
+            ts: Date.now(),
         }
-        return invite;
-    }
-
-    module.checkInvite = function(invite) {
-        var keyBuf = Buffer.from(invite['key']);
-        var nameBuf = Buffer.from(this.name);
-        var typeBuf = Buffer.from(invite['type']);
-        var code = utils.sha256(Buffer.concat([this.channelSecret, nameBuf, typeBuf, keyBuf]));
-        if(code == invite['code']) {
-            return true;
-        }
-
-        return false;
-    }
-
-    module.sendInvite = function(id, type, key) {
-        // send an invite to a user
+        net.route(peerId, globalConfig['pair'], data);
     }
 
     module.announce = function() {
