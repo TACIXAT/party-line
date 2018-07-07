@@ -21,23 +21,16 @@ Party Lines are sub chats, established between a set of peers. These chats have 
 ```bash
 git clone https://github.com/douggard/party-line.git
 cd party-line
-npm install
-node src/partyline.js
+go something something
 ```
 
-Or download the prebuilt binaries from /bin (built with [pkg](https://github.com/zeit/pkg)).
+Or download the prebuilt binaries from /bin.
 
 ## Usage
 
-1. Get an active peer's bootstrap ID
+TBD
 
-2. Start the client
-
-3. `/bootstrap <peer id>`
-
-4. Happy chatting!
-
-## FAIRLY ARDUOUS QUESTS
+## FAQQIES
 
 **Why should I not trust Main Line?**
 
@@ -61,9 +54,9 @@ Yea, fuck it, why not?
 
 **Is this Tor?**
 
-No. While your messages in Main Line will often route through other users, routing tables are public which contain your ID, IP, and port. Since you sign all your messages with your key and ID, it is not unrealistic that people could figure out which IP is posting which messages.
+No. While your messages in Main Line will often route through other users, routing tables are public which contain your ID, IP, and port. Since you sign all your messages with your key and ID, it is not unrealistic that people could figure out which IP is posting which messages. 
 
-**Is this just a shitty Javascript knockoff of 9gridchan?**
+**Is this just a straight ripoff of 9gridchan?**
 
 Yes.
 
