@@ -9,7 +9,6 @@ import (
 	"flag"
 	"encoding/gob"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"log"
 )
@@ -18,7 +17,9 @@ func main() {
 	debug := flag.Bool("debug", false, "Debug flag.")
 	flag.Parse()
 
-	port := 3499
+	var port uint16 = 3499
+
+	natStuff(port)
 
 	var r io.Reader
 	if *debug {
@@ -28,11 +29,6 @@ func main() {
 	}
 
 	key, err := rsa.GenerateKey(r, 4096)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	addr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", port))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -48,9 +44,6 @@ func main() {
 	hasher := sha256.New()
 	hasher.Write(pubBytes)
 
-	log.Println(hex.EncodeToString(pubBytes))
 	log.Printf(hex.EncodeToString(hasher.Sum(nil)))
-	log.Println(addr)
-
-	manet.Listen(addr)
+	defer natCleanup()
 }

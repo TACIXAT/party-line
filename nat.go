@@ -73,8 +73,8 @@ func pmpExternalIP(client *natpmp.Client) (net.IP, error) {
     return net.IPv4(extBytes[0], extBytes[1], extBytes[2], extBytes[3]), nil
 }
 
-func pmpOpen(client *natpmp.Client, port int) error {
-	_, err := client.AddPortMapping("udp", port, port, 30 * 24 * 60 * 60)
+func pmpOpen(client *natpmp.Client, port uint16) error {
+	_, err := client.AddPortMapping("udp", int(port), int(port), 30 * 24 * 60 * 60)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -82,8 +82,8 @@ func pmpOpen(client *natpmp.Client, port int) error {
     return nil
 }
 
-func pmpClose(client *natpmp.Client, port int) error {
-	_, err := client.AddPortMapping("udp", port, 0, 0)
+func pmpClose(client *natpmp.Client, port uint16) error {
+	_, err := client.AddPortMapping("udp", int(port), 0, 0)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -129,7 +129,21 @@ func isPrivateIP(ip net.IP) bool {
     return false
 }
 
-func main() {
+var closeUpnp bool = false
+var closePmp bool = false
+var openedPort uint16 = 0
+var upnpClient *upnp.IGD
+var pmpClient *natpmp.Client
+
+func natCleanup() {
+	if closeUpnp {
+		upnpClose(upnpClient, openedPort)
+	} else if closePmp {
+		pmpClose(pmpClient, openedPort)
+	}
+}
+
+func natStuff(port uint16) net.IP {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	ip, err := getOutboundIP()
@@ -137,14 +151,14 @@ func main() {
 		log.Fatal("error getting outbound ip", err)
 	}
 
-	var extIP net.IP
+	openedPort = port
+
+	var extIP net.IP = ip
 	if isPrivateIP(ip) {
-		var upnpClient *upnp.IGD
-		var pmpClient *natpmp.Client
 		log.Println("private ip detected")
 		log.Println("trying upnp...")
 		
-		upnpClient, err := upnpDiscover()
+		upnpClient, err = upnpDiscover()
 		if err != nil {
 			log.Println("error with upnp", err)
 			goto pmp
@@ -156,13 +170,13 @@ func main() {
 			goto pmp
 		}
 
-		err = upnpOpen(upnpClient, 0xdab)
+		err = upnpOpen(upnpClient, port)
 		if err != nil {
 			log.Println("error with upnp", err)
 			goto pmp
 		}
 
-		defer upnpClose(upnpClient, 0xdab)
+		closeUpnp = true
 		goto natSuccess
 pmp:
 		log.Println("trying pmp...")
@@ -179,13 +193,13 @@ pmp:
 			goto natFail
 		}
 		
-		err = pmpOpen(pmpClient, 0xdab)
+		err = pmpOpen(pmpClient, port)
 		if err != nil {
 			log.Println("error with pmp", err)
 			goto natFail
 		}
 		
-		defer pmpClose(pmpClient, 0xdab)
+		closePmp = true
 		goto natSuccess
 natFail:
 		log.Println("could not map port with upnp or pmp")
@@ -194,4 +208,5 @@ natSuccess:
 	}
 
 	log.Println(extIP)
+	return extIP
 }
