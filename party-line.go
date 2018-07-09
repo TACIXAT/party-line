@@ -139,7 +139,8 @@ func sendBootstrap(addr, peerId string) {
 	}
 
 	writer := bufio.NewWriter(conn)
-	writer.WriteString(string(jsonEnv) + "\n")
+	writer.WriteString(fmt.Sprintf("%s\n", string(jsonEnv)))
+	setStatus("bs sent")
 }
 
 func getKeys() {
@@ -181,7 +182,7 @@ func recv(address string, port uint16) {
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
-			log.Println("error reading")
+			setStatus("error reading")
 		}
 
 		chatStatus(line)
@@ -221,7 +222,7 @@ func main() {
 	// ctrlChan := make(chan bool, 1)
 
 	// start network receiver
-	go recv("0.0.0.0", port)
+	go recv("", port)
 
 	userInterface()
 }
