@@ -4,6 +4,7 @@ import (
 	"github.com/gizak/termui"
 	"strings"
 	"time"
+	"log"
 )
 
 type Chat struct {
@@ -23,10 +24,30 @@ func formatChats() string {
 	return chatStr
 }
 
+func handleBootstrap(toks []string) {
+	if len(toks) < 2 {
+		// TODO: show error
+		log.Println("invalid bs")
+		return
+	}
+
+	bs := toks[1]
+	bsToks := strings.Split(bs, "/")
+	if len(bsToks) != 2 {
+		log.Println("invalid bs")
+		return
+	}
+
+	addr := toks[0]
+	id := toks[1]
+
+	sendBootstrap(addr, id)
+}
+
 func handleChat(chatChan chan string, buf string) {
 	chatMsg := Chat{
 		Time:    time.Now(),
-		ID:      peerSelf.ID,
+		ID:      self.ID,
 		Message: buf}
 
 	chatLog = append(chatLog, chatMsg)
@@ -52,6 +73,8 @@ func handleUserInput(chatChan chan string, buf string) {
 	switch toks[0] {
 	case "/quit":
 		termui.StopLoop()
+	case "/bs":
+		handleBootstrap(toks)
 	default:
 		handleChat(chatChan, buf)
 	}
@@ -70,7 +93,7 @@ func userInterface() {
 	messageBox.BorderLabel = "Party-Line"
 	messageBox.BorderFg = termui.ColorYellow
 
-	inputBox := termui.NewPar("/bs ...")
+	inputBox := termui.NewPar("")
 	inputBox.Height = 3
 	inputBox.Y = 9
 

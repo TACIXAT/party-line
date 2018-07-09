@@ -8,12 +8,13 @@ import (
 	"flag"
 	"github.com/kevinburke/nacl"
 	"github.com/kevinburke/nacl/box"
-	"io"
+	"github.com/kevinburke/nacl/sign"
+	// "io"
 	"log"
 	"net"
 	"strconv"
 	// "sync"
-	// "time"
+	"time"
 )
 
 /*
@@ -24,17 +25,23 @@ TODO:
 	unmarshal
 */
 
-type PeerSelf struct {
+type Self struct {
 	ID      string
-	Pub     nacl.Key
-	Prv     nacl.Key
+	Handle  string
+	EncPub  nacl.Key
+	EncPrv  nacl.Key
+	SignPub sign.PublicKey
+	SignPrv sign.PrivateKey
 	Address string
 }
 
 type Peer struct {
 	ID      string
-	Pub     nacl.Key
+	Handle  string
+	EncPub  nacl.Key
+	SignPub sign.PublicKey
 	Address string
+	Writer  *bufio.Writer
 }
 
 type Envelope struct {
@@ -45,40 +52,106 @@ type Envelope struct {
 }
 
 type MessageBootstrap struct {
+	ID      string
+	Handle  string
+	EncPub  nacl.Key
+	SignPub sign.PublicKey
 	Address string
 }
 
 type MessageChat struct {
 	Chat string
+	Time time.Time
 }
 
-var peerSelf PeerSelf
+var self Self
+var peerTable map[string]Peer
 
-func handleConn(conn net.Conn) {
-	var env Envelope
-	decoder := json.NewDecoder(conn)
-	err := decoder.Decode(&env)
+func sendChat(msg string) {
+	env := Envelope{
+		Type: "chat",
+		From: self.ID,
+		To:   "",
+		Data: ""}
 
+	chat := MessageChat{
+		Chat: msg,
+		Time: time.Now()}
+
+	jsonChat, err := json.Marshal(chat)
 	if err != nil {
-		log.Println("error decoding:", err)
+		log.Println(err)
+		return
 	}
 
-	log.Println(env.Data)
+	for _, peer := range peerTable {
+		// closed := box.EasySeal([]byte(jsonChat), peer.EncPub, self.EncPrv)
+		signed := sign.Sign([]byte(jsonChat), self.SignPrv)
+		env.Data = hex.EncodeToString(signed)
+		jsonEnv, err := json.Marshal(env)
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+		peer.Writer.WriteString(string(jsonEnv) + "\n")
+	}
+}
+
+func sendBootstrap(addr, peerId string) {
+	env := Envelope{
+		Type: "chat",
+		From: self.ID,
+		To:   peerId,
+		Data: ""}
+
+	bs := MessageBootstrap{
+		ID:      self.ID,
+		Handle:  self.Handle,
+		EncPub:  self.EncPub,
+		Address: self.Address,
+		SignPub: self.SignPub}
+
+	jsonBs, err := json.Marshal(bs)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	signed := sign.Sign([]byte(jsonBs), self.SignPrv)
+	env.Data = hex.EncodeToString(signed)
+
+	jsonEnv, err := json.Marshal(env)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	log.Println(jsonEnv)
+
+	// conn := net.Dial("udp")
+	// writer := io.NewWriter(conn)
+	// writer.WriteString(string(jsonEnv) + "\n")
 }
 
 func getKeys() {
-	var r io.Reader
-	r = rand.Reader
-
-	pub, prv, err := box.GenerateKey(r)
+	r := rand.Reader
+	signPub, signPrv, err := sign.Keypair(r)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	peerSelf.ID = hex.EncodeToString(pub[:])
-	peerSelf.Pub = pub
-	peerSelf.Prv = prv
-	log.Println(peerSelf.ID)
+	encPub, encPrv, err := box.GenerateKey(r)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	self.ID = hex.EncodeToString(signPub[:])
+	self.Handle = *handleFlag
+	self.EncPub = encPub
+	self.EncPrv = encPrv
+	self.SignPub = signPub
+	self.SignPrv = signPrv
+	log.Println(self.ID)
 }
 
 func recv(address string, port uint16) {
@@ -109,10 +182,12 @@ func recv(address string, port uint16) {
 
 var debugFlag *bool
 var portFlag *uint
+var handleFlag *string
 
 func main() {
 	debugFlag = flag.Bool("debug", false, "Debug.")
 	portFlag = flag.Uint("port", 3499, "Port.")
+	handleFlag = flag.String("handle", "anon", "Handle.")
 	flag.Parse()
 
 	// get port
@@ -124,9 +199,9 @@ func main() {
 
 	// build self info (addr, keys, id)
 	portStr := strconv.FormatUint(uint64(port), 10)
-	peerSelf.Address = extIP.String() + ":" + portStr
+	self.Address = extIP.String() + ":" + portStr
 	getKeys()
-	log.Printf("%s/%s\n", peerSelf.Address, peerSelf.ID)
+	log.Printf("%s/%s\n", self.Address, self.ID)
 
 	// var wg sync.WaitGroup
 	// ctrlChan := make(chan bool, 1)
