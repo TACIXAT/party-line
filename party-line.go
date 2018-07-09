@@ -14,6 +14,7 @@ import (
 	"net"
 	"strconv"
 	// "sync"
+	"fmt"
 	"time"
 )
 
@@ -66,6 +67,9 @@ type MessageChat struct {
 
 var self Self
 var peerTable map[string]Peer
+
+var chatChan chan string
+var statusChan chan string
 
 func sendChat(msg string) {
 	env := Envelope{
@@ -126,11 +130,16 @@ func sendBootstrap(addr, peerId string) {
 		return
 	}
 
-	log.Println(jsonEnv)
+	chatStatus(string(jsonEnv))
 
-	// conn := net.Dial("udp")
-	// writer := io.NewWriter(conn)
-	// writer.WriteString(string(jsonEnv) + "\n")
+	conn, err := net.Dial("udp", addr)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	writer := bufio.NewWriter(conn)
+	writer.WriteString(string(jsonEnv) + "\n")
 }
 
 func getKeys() {
@@ -175,7 +184,7 @@ func recv(address string, port uint16) {
 			log.Println("error reading")
 		}
 
-		log.Println(line)
+		chatStatus(line)
 	}
 
 }
@@ -201,7 +210,12 @@ func main() {
 	portStr := strconv.FormatUint(uint64(port), 10)
 	self.Address = extIP.String() + ":" + portStr
 	getKeys()
-	log.Printf("%s/%s\n", self.Address, self.ID)
+
+	chatChan = make(chan string, 1)
+	statusChan = make(chan string, 1)
+	bsId := fmt.Sprintf("%s/%s/%s", extIP.String(), portStr, self.ID)
+	log.Println(bsId)
+	chatStatus(bsId)
 
 	// var wg sync.WaitGroup
 	// ctrlChan := make(chan bool, 1)
