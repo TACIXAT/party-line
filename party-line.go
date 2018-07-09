@@ -1,136 +1,138 @@
 package main
 
 import (
-	"bytes"
+	"bufio"
 	"crypto/rand"
-	"crypto/rsa"
-	"crypto/sha256"
-	"encoding/gob"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
+	"github.com/kevinburke/nacl"
+	"github.com/kevinburke/nacl/box"
 	"io"
 	"log"
-	mrand "math/rand"
 	"net"
 	"strconv"
-	"strings"
-	"sync"
-	"time"
+	// "sync"
+	// "time"
 )
 
-type Message struct {
-	// Kind string
-	// From string
-	// Signature string
+/*
+TODO:
+	peer table
+	bootstrap
+	chat
+	unmarshal
+*/
+
+type PeerSelf struct {
+	ID      string
+	Pub     nacl.Key
+	Prv     nacl.Key
+	Address string
+}
+
+type Peer struct {
+	ID      string
+	Pub     nacl.Key
+	Address string
+}
+
+type Envelope struct {
+	Type string
+	From string
+	To   string
 	Data string
 }
 
-func recv(conn *net.UDPConn, wg *sync.WaitGroup) {
-	defer wg.Done()
+type MessageBootstrap struct {
+	Address string
+}
 
+type MessageChat struct {
+	Chat string
+}
+
+var peerSelf PeerSelf
+
+func handleConn(conn net.Conn) {
+	var env Envelope
 	decoder := json.NewDecoder(conn)
+	err := decoder.Decode(&env)
+
+	if err != nil {
+		log.Println("error decoding:", err)
+	}
+
+	log.Println(env.Data)
+}
+
+func getKeys() {
+	var r io.Reader
+	r = rand.Reader
+
+	pub, prv, err := box.GenerateKey(r)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	peerSelf.ID = hex.EncodeToString(pub[:])
+	peerSelf.Pub = pub
+	peerSelf.Prv = prv
+	log.Println(peerSelf.ID)
+}
+
+func recv(address string, port uint16) {
+	addr := net.UDPAddr{
+		Port: int(port),
+		IP:   net.ParseIP(address),
+	}
+	// set up listener
+	conn, err := net.ListenUDP("udp", &addr)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer conn.Close()
+	log.Println("listening...")
+
+	reader := bufio.NewReader(conn)
 	for {
-		var msg Message
-		err := decoder.Decode(&msg)
+		line, err := reader.ReadString('\n')
 		if err != nil {
-			log.Println("error decoding:", err)
+			log.Println("error reading")
 		}
 
-		if msg.Data == "exit" {
-			break
-		}
-
-		log.Println(msg.Data)
+		log.Println(line)
 	}
+
 }
 
-func send(conn net.Conn, wg *sync.WaitGroup) {
-	log.Println("sending...")
-	defer wg.Done()
-
-	encoder := json.NewEncoder(conn)
-	var msg Message
-	for i := 0; i < 10; i++ {
-		msg.Data = "hello"
-		encoder.Encode(msg)
-		time.Sleep(1 * time.Second)
-	}
-	msg.Data = "exit"
-	encoder.Encode(msg)
-}
+var debugFlag *bool
+var portFlag *uint
 
 func main() {
-	debugFlag := flag.Bool("debug", false, "Debug.")
-	portFlag := flag.Uint("port", 3499, "Port.")
-	bootstrapFlag := flag.String("bs", "", "Boostrap.")
+	debugFlag = flag.Bool("debug", false, "Debug.")
+	portFlag = flag.Uint("port", 3499, "Port.")
 	flag.Parse()
 
+	// get port
 	var port uint16 = uint16(*portFlag)
 
+	// get external ip and open ports
 	extIP := natStuff(port)
 	defer natCleanup()
 
-	var r io.Reader
-	if *debugFlag {
-		r = mrand.New(mrand.NewSource(int64(port)))
-	} else {
-		r = rand.Reader
-	}
-
-	key, err := rsa.GenerateKey(r, 4096)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	err = enc.Encode(key.PublicKey)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	pubBytes := buf.Bytes()
-	hasher := sha256.New()
-	hasher.Write(pubBytes)
-
-	id := hex.EncodeToString(hasher.Sum(nil))
-	log.Printf(id)
+	// build self info (addr, keys, id)
 	portStr := strconv.FormatUint(uint64(port), 10)
-	log.Printf("%s/%s/%s\n", extIP, portStr, id)
+	peerSelf.Address = extIP.String() + ":" + portStr
+	getKeys()
+	log.Printf("%s/%s\n", peerSelf.Address, peerSelf.ID)
 
-	addr := net.UDPAddr{
-		Port: int(port),
-		IP:   net.ParseIP("0.0.0.0"),
-	}
+	// var wg sync.WaitGroup
+	// ctrlChan := make(chan bool, 1)
 
-	conn, err := net.ListenUDP("udp", &addr)
-	log.Println("listening...")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer conn.Close()
+	// start network receiver
+	go recv("0.0.0.0", port)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	if *bootstrapFlag != "" {
-		bs := strings.Split(*bootstrapFlag, "/")
-		if len(bs) != 3 {
-			log.Fatal("invalid bootstrap string")
-		}
-
-		peerIP := bs[0]
-		peerPort := bs[1]
-		// peerID := bs[2]
-
-		peerConn, err := net.Dial("udp", peerIP+":"+peerPort)
-		if err != nil {
-			log.Fatal("error connecting to peer", err)
-		}
-
-		go send(peerConn, &wg)
-	} else {
-		go recv(conn, &wg)
-	}
-	wg.Wait()
+	userInterface()
 }
