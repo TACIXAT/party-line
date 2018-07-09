@@ -42,7 +42,7 @@ type Peer struct {
 	EncPub  nacl.Key
 	SignPub sign.PublicKey
 	Address string
-	Writer  *bufio.Writer
+	Conn    net.Conn
 }
 
 type Envelope struct {
@@ -71,6 +71,48 @@ var peerTable map[string]Peer
 var chatChan chan string
 var statusChan chan string
 
+func processBootstrap(env *Envelope) {
+	fromPub, err := hex.DecodeString(env.From)
+	if err != nil {
+		log.Println(err)
+		setStatus("error decoding hex (bs:from)")
+		return
+	}
+
+	data, err := hex.DecodeString(env.Data)
+	if err != nil {
+		log.Println(err)
+		setStatus("error decoding hex (bs:data)")
+		return
+	}
+
+	verified := sign.Verify(data, fromPub)
+	if !verified {
+		setStatus("error message integrity (bs)")
+		return
+	}
+
+	strData := env.Data[sign.SignatureSize:]
+	chatStatus(strData)
+}
+
+func processMessage(strMsg string) {
+	var env Envelope
+	err := json.Unmarshal([]byte(strMsg), &env)
+	if err != nil {
+		log.Println(err)
+		setStatus("invalid json message received")
+		return
+	}
+
+	switch env.Type {
+	case "bootstrap":
+		processBootstrap(&env)
+	default:
+		setStatus("unknown msg type: " + env.Type)
+	}
+}
+
 func sendChat(msg string) {
 	env := Envelope{
 		Type: "chat",
@@ -97,13 +139,13 @@ func sendChat(msg string) {
 			log.Println(err)
 			continue
 		}
-		peer.Writer.WriteString(string(jsonEnv) + "\n")
+		peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
 	}
 }
 
 func sendBootstrap(addr, peerId string) {
 	env := Envelope{
-		Type: "chat",
+		Type: "bootstrap",
 		From: self.ID,
 		To:   peerId,
 		Data: ""}
@@ -138,8 +180,7 @@ func sendBootstrap(addr, peerId string) {
 		return
 	}
 
-	writer := bufio.NewWriter(conn)
-	writer.WriteString(fmt.Sprintf("%s\n", string(jsonEnv)))
+	conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
 	setStatus("bs sent")
 }
 
@@ -185,7 +226,8 @@ func recv(address string, port uint16) {
 			setStatus("error reading")
 		}
 
-		chatStatus(line)
+		chatStatus("got: " + line)
+		processMessage(line)
 	}
 
 }
