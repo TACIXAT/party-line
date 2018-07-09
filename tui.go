@@ -3,9 +3,47 @@ package main
 import (
 	"github.com/gizak/termui"
 	"strings"
+	"time"
 )
 
-func handleUserInput(buf string) {
+type Chat struct {
+	Time    time.Time
+	ID      string
+	Message string
+}
+
+var chatLog []Chat
+
+func formatChats() string {
+	chatStr := ""
+	for i := 0; i < len(chatLog); i++ {
+		chat := chatLog[i]
+		chatStr += chat.Time.Format("15:04:05 " + chat.ID[:6] + " " + chat.Message + "\n")
+	}
+	return chatStr
+}
+
+func handleChat(chatChan chan string, buf string) {
+	chatMsg := Chat{
+		Time:    time.Now(),
+		ID:      peerSelf.ID,
+		Message: buf}
+
+	chatLog = append(chatLog, chatMsg)
+	chats := formatChats()
+	chatChan <- chats
+}
+
+func chatDrawer(chatChan chan string, messageBox *termui.Par) {
+	for {
+		chatsFormatted := <-chatChan
+		messageBox.Text = chatsFormatted
+		termui.Clear()
+		termui.Render(termui.Body)
+	}
+}
+
+func handleUserInput(chatChan chan string, buf string) {
 	if len(buf) == 0 {
 		return
 	}
@@ -14,6 +52,8 @@ func handleUserInput(buf string) {
 	switch toks[0] {
 	case "/quit":
 		termui.StopLoop()
+	default:
+		handleChat(chatChan, buf)
 	}
 }
 
@@ -24,7 +64,7 @@ func userInterface() {
 	}
 	defer termui.Close()
 
-	messageBox := termui.NewPar("13:37:00   tacixat | sup jerks")
+	messageBox := termui.NewPar("")
 	messageBox.Height = termui.TermHeight() - 3
 	messageBox.Y = 4
 	messageBox.BorderLabel = "Party-Line"
@@ -44,10 +84,14 @@ func userInterface() {
 
 	termui.Render(termui.Body)
 
+	chatChan := make(chan string, 1)
+	go chatDrawer(chatChan, messageBox)
+
 	buf := ""
 	termui.Handle("/sys/kbd/<enter>", func(evt termui.Event) {
-		handleUserInput(buf)
+		handleUserInput(chatChan, buf)
 		buf = ""
+		inputBox.Text = buf
 		termui.Clear()
 		termui.Render(termui.Body)
 	})
@@ -65,6 +109,13 @@ func userInterface() {
 		if len(buf) > 0 {
 			buf = buf[:len(buf)-1]
 		}
+		inputBox.Text = buf
+		termui.Clear()
+		termui.Render(termui.Body)
+	})
+
+	termui.Handle("/sys/kbd/<space>", func(evt termui.Event) {
+		buf += " "
 		inputBox.Text = buf
 		termui.Clear()
 		termui.Render(termui.Body)
