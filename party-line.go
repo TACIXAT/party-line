@@ -67,6 +67,7 @@ type MessageChat struct {
 
 var self Self
 var peerTable map[string]Peer
+var idealTable []string
 
 var chatChan chan string
 var statusChan chan string
@@ -88,12 +89,39 @@ func processBootstrap(env *Envelope) {
 
 	verified := sign.Verify(data, fromPub)
 	if !verified {
-		setStatus("error message integrity (bs)")
+		setStatus("questionable message integrity discarding (bs)")
 		return
 	}
 
-	strData := env.Data[sign.SignatureSize:]
-	chatStatus(strData)
+	jsonData := data[sign.SignatureSize:]
+	chatStatus(string(jsonData))
+
+	var bs MessageBootstrap
+	err = json.Unmarshal(jsonData, &bs)
+	if err != nil {
+		log.Println(err)
+		setStatus("error invalid json (bs)")
+		return
+	}
+
+	var peer Peer
+	peer.ID = bs.ID
+	peer.Handle = bs.Handle
+	peer.EncPub = bs.EncPub
+	peer.SignPub = bs.SignPub
+	peer.Address = bs.Address
+
+	peerConn, err := net.Dial("udp", peer.Address)
+	if err != nil {
+		log.Println(err)
+		setStatus("could not connect to peer (bs)")
+		return
+	}
+
+	peer.Conn = peerConn
+	peer.Conn.Write([]byte("success!"))
+	// sendTable(peer)
+	// insertPeer(peer)
 }
 
 func processMessage(strMsg string) {
