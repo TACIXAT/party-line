@@ -67,7 +67,7 @@ type MessageChat struct {
 
 var self Self
 var peerTable map[string]Peer
-var idealTable []string
+var idealTable [256]string
 
 var chatChan chan string
 var statusChan chan string
@@ -95,6 +95,7 @@ func processBootstrap(env *Envelope) {
 
 	jsonData := data[sign.SignatureSize:]
 	chatStatus(string(jsonData))
+	chatStatus(fmt.Sprintf("%d", len(jsonData)))
 
 	var bs MessageBootstrap
 	err = json.Unmarshal(jsonData, &bs)
@@ -111,6 +112,11 @@ func processBootstrap(env *Envelope) {
 	peer.SignPub = bs.SignPub
 	peer.Address = bs.Address
 
+	if env.From != peer.ID {
+		setStatus("id does not match from (bs)")
+		return
+	}
+
 	peerConn, err := net.Dial("udp", peer.Address)
 	if err != nil {
 		log.Println(err)
@@ -119,9 +125,46 @@ func processBootstrap(env *Envelope) {
 	}
 
 	peer.Conn = peerConn
-	peer.Conn.Write([]byte("success!"))
-	// sendTable(peer)
+	sendVerify(peer)
+	sendTable(peer)
 	// insertPeer(peer)
+}
+
+func sendTable(peer Peer) {
+
+}
+
+func sendVerify(peer Peer) {
+	env := Envelope{
+		Type: "verifybs",
+		From: self.ID,
+		To:   peer.ID,
+		Data: ""}
+
+	bs := MessageBootstrap{
+		ID:      self.ID,
+		Handle:  self.Handle,
+		EncPub:  self.EncPub,
+		Address: self.Address,
+		SignPub: self.SignPub}
+
+	jsonBs, err := json.Marshal(bs)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	signed := sign.Sign([]byte(jsonBs), self.SignPrv)
+	env.Data = hex.EncodeToString(signed)
+
+	jsonEnv, err := json.Marshal(env)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
+	setStatus("verify sent")
 }
 
 func processMessage(strMsg string) {

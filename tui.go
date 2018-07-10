@@ -122,7 +122,7 @@ func userInterface() {
 	inputBox := termui.NewPar("")
 	inputBox.Height = 3
 
-	statusBox := termui.NewPar("Hello, world.")
+	statusBox := termui.NewPar("good")
 	statusBox.Height = 1
 	statusBox.Bg = termui.ColorBlue
 	statusBox.TextBgColor = termui.ColorBlue
