@@ -84,13 +84,6 @@
                 }
             }
         </style>
-        <script>
-            var header = document.getElementsByTagName("header")[0];
-            setInterval(function() {
-                var curr = header.style["text-align"];
-                header.style["text-align"] = curr == "right" ? "left" : "right";
-            }, 900)
-        </script>
     </head>
     <body class='site'>
         <header class='header'>
@@ -130,5 +123,13 @@
             <p>connect with:</p>
             <pre>/bs -</pre>
         </footer>
+        
+        <script>
+            var header = document.getElementsByTagName("header")[0];
+            setInterval(function() {
+                var curr = header.style["text-align"];
+                header.style["text-align"] = curr == "right" ? "left" : "right";
+            }, 500)
+        </script>
     </body>
 </html>
