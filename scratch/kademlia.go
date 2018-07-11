@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/kevinburke/nacl/sign"
 	"math/big"
+	"container/list"
 )
 
 func calculateIdealTable(idBytes []byte) [256]*big.Int {
@@ -72,32 +73,57 @@ func findClosest(idealPeerIds [256]*big.Int, idBytes []byte) {
 	}
 }
 
-func addPeer(peerTable *[256][]byte, idealPeerIds [256]*big.Int, peer []byte) {
+func addPeer(peerTable *[256]*list.List, idealPeerIds [256]*big.Int, id []byte) {
 	insertId := new(big.Int)
-	insertId.SetBytes(peer)
-
+	insertId.SetBytes(id)
 	for i := 0; i < 256; i++ {
 		insertDist := new(big.Int)
 		insertDist.Sub(idealPeerIds[i], insertId)
 		insertDist.Abs(insertDist)
 
-		if len(peerTable[i]) == 0 {
-			// fmt.Println("new peer at", i)
-			peerTable[i] = peer
-			continue
-		}
+		last := peerTable[i].Back()
+		lastPeerEntry := last.Value.(*PeerEntry)
+		if insertDist.Cmp(lastPeerEntry.Distance) < 0 {
+			insertEntry := new(PeerEntry) 
+			insertEntry.ID = id
+			insertEntry.Distance = insertDist
+			
+			curr := last
+			currPeerEntry := lastPeerEntry
+			for curr != nil && insertDist.Cmp(currPeerEntry.Distance) < 0 {
+				curr = curr.Prev()
+				if curr != nil {
+					currPeerEntry = curr.Value.(*PeerEntry)
+				}
+			}
 
-		currId := new(big.Int)
-		currId.SetBytes(peerTable[i])
-		currDist := new(big.Int)
-		currDist.Sub(idealPeerIds[i], currId)
-		currDist.Abs(currDist)
+			if curr == nil {
+				peerTable[i].PushFront(insertEntry)
+			} else {
+				peerTable[i].InsertAfter(insertEntry, curr)
+			}
 
-		if insertDist.Cmp(currDist) < 0 {
-			peerTable[i] = peer
-			// fmt.Println("added peer at", i)
+			if peerTable[i].Len() > 20 {
+				peerTable[i].Remove(last)
+			}
 		}
 	}
+}
+
+/*
+	var lists [256]*list
+	populate self on all lists
+	add peer:
+		for list in lists
+			if peer further than furthest (ensure closer than self)
+				continue
+			
+			insert peer
+*/
+
+type PeerEntry struct {
+	ID sign.PublicKey
+	Distance *big.Int
 }
 
 func main() {
@@ -117,8 +143,24 @@ func main() {
 	fmt.Println(hex.EncodeToString(fakePeers[0]))
 	fmt.Println(hex.EncodeToString(fakePeers[9999]))
 
-	var peerTable [256][]byte
-	fmt.Println(len(peerTable[0]))
+	// var peerTable [256][]byte
+	// fmt.Println(len(peerTable[0]))
+
+	var peerTable [256]*list.List
+	idInt := new(big.Int)
+	idInt.SetBytes(id)
+	for i := 0; i < 256; i++ {
+		peerDist := new(big.Int)
+		peerDist.Sub(idealPeerIds[i], idInt)
+		peerDist.Abs(peerDist)
+
+		peerEntry := new(PeerEntry) 
+		peerEntry.ID = id
+		peerEntry.Distance = peerDist
+
+		peerTable[i] = list.New()
+		peerTable[i].PushFront(peerEntry)
+	}
 
 	for i := 0; i < 10000; i++ {
 		addPeer(&peerTable, idealPeerIds, fakePeers[i])
@@ -126,6 +168,6 @@ func main() {
 	}
 
 	for i := 0; i < 256; i++ {
-		fmt.Println(hex.EncodeToString(peerTable[i]))
+		fmt.Println(hex.EncodeToString(peerTable[i].Front().Value.(*PeerEntry).ID), peerTable[i].Len())
 	}
 }
