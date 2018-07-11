@@ -66,6 +66,7 @@ type MessageChat struct {
 }
 
 var self Self
+
 // var peerTable map[string]Peer
 var idealTable [256]string
 
