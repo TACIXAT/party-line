@@ -20,10 +20,16 @@ import (
 
 /*
 TODO:
-	peer table
-	bootstrap
+	send table
+	announce
 	chat
-	unmarshal
+	pulse
+	disconnect
+	private message
+
+	private channel
+	advertise file
+	advertise shared file
 */
 
 type Self struct {
@@ -360,24 +366,40 @@ func recv(address string, port uint16) {
 var debugFlag *bool
 var portFlag *uint
 var handleFlag *string
+var ipFlag *string
+var nonatFlag *bool
 
 func main() {
 	debugFlag = flag.Bool("debug", false, "Debug.")
 	portFlag = flag.Uint("port", 3499, "Port.")
 	handleFlag = flag.String("handle", "anon", "Handle.")
+	ipFlag = flag.String("ip", "", "Manually set external IP.")
+	nonatFlag = flag.Bool("nonat", false, "Disable UPNP and PMP.")
 	flag.Parse()
 
 	// get port
 	var port uint16 = uint16(*portFlag)
 
 	// get external ip and open ports
-	extIP := natStuff(port)
-	defer natCleanup()
+	var extIP net.IP
+	if *nonatFlag {
+		if *ipFlag == "" {
+			log.Fatal("Must provide an IP address with nonat flag.")
+		}
+
+		extIP = net.ParseIP(*ipFlag)
+	} else {
+		extIP = natStuff(port)
+		defer natCleanup()
+	}
 
 	// build self info (addr, keys, id)
 	portStr := strconv.FormatUint(uint64(port), 10)
 	self.Address = extIP.String() + ":" + portStr
 	getKeys()
+
+	calculateIdealTable(self.SignPub)
+	initTable(self.SignPub)
 
 	chatChan = make(chan string, 1)
 	statusChan = make(chan string, 1)
