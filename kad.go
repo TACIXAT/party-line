@@ -2,8 +2,8 @@ package main
 
 import (
 	"container/list"
-	"encoding/hex"
-	"fmt"
+	// "encoding/hex"
+	// "fmt"
 	"github.com/kevinburke/nacl/sign"
 	"math/big"
 )
