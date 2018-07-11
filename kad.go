@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"container/list"
-	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"github.com/kevinburke/nacl/sign"
@@ -126,71 +124,4 @@ func findClosest(idBytes []byte) *PeerEntry {
 	}
 
 	return closestElement.Value.(*PeerEntry)
-}
-
-func getFakePeers() [][]byte {
-	var peers [][]byte
-	for i := 0; i < 10000; i++ {
-		id := make([]byte, 32)
-		rand.Read(id)
-		peers = append(peers, id)
-		// fmt.Println(hex.EncodeToString(id))
-	}
-
-	return peers
-}
-
-func main() {
-	r := rand.Reader
-	id, _, err := sign.Keypair(r)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println(hex.EncodeToString(id))
-
-	calculateIdealTable(id)
-	fakePeers := getFakePeers()
-
-	fmt.Println(len(idealPeerIds))
-	fmt.Println(len(fakePeers))
-	fmt.Println(hex.EncodeToString(fakePeers[0]))
-	fmt.Println(hex.EncodeToString(fakePeers[9999]))
-
-	// var peerTable [256][]byte
-	// fmt.Println(len(peerTable[0]))
-
-	initTable(id)
-
-	closest := findClosest(fakePeers[0])
-	if closest == nil {
-		fmt.Println("empty table")
-	}
-
-	for i := 0; i < 10000; i++ {
-		addPeer(fakePeers[i])
-	}
-
-	for i := 0; i < 256; i++ {
-		fmt.Println(i, hex.EncodeToString(peerTable[i].Front().Value.(*PeerEntry).ID), peerTable[i].Len())
-	}
-
-	self := 0
-	exact := 0
-	other := 0
-	for i := 0; i < 10000; i++ {
-		closest := findClosest(fakePeers[i])
-		if bytes.Compare(closest.ID, id) == 0 {
-			self++
-		} else if bytes.Compare(closest.ID, fakePeers[i]) == 0 {
-			exact++
-		} else {
-			other++
-		}
-	}
-
-	fmt.Println()
-	fmt.Println("self ", self)
-	fmt.Println("exact", exact)
-	fmt.Println("other", other)
 }
