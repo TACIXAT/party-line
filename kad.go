@@ -21,7 +21,15 @@ func initTable(id []byte) {
 	idInt.SetBytes(id)
 
 	for i := 0; i < 256; i++ {
+		peerDist := new(big.Int)
+		peerDist.Xor(idealPeerIds[i], idInt)
+
+		peerEntry := new(PeerEntry) 
+		peerEntry.ID = id
+		peerEntry.Distance = peerDist
+
 		peerTable[i] = list.New()
+		peerTable[i].PushFront(peerEntry)
 	}
 }
 
@@ -49,19 +57,14 @@ func addPeer(id []byte) {
 		insertDist.Abs(insertDist)
 
 		last := peerTable[i].Back()
-
-		insertEntry := new(PeerEntry)
-		insertEntry.ID = id
-		insertEntry.Distance = insertDist
-
-		if last == nil {
-			peerTable[i].PushBack(insertEntry)
-		} else {
-			lastPeerEntry := last.Value.(*PeerEntry)
-
+		lastPeerEntry := last.Value.(*PeerEntry)
+		if insertDist.Cmp(lastPeerEntry.Distance) < 0 {
+			insertEntry := new(PeerEntry) 
+			insertEntry.ID = id
+			insertEntry.Distance = insertDist
+			
 			curr := last
 			currPeerEntry := lastPeerEntry
-
 			for curr != nil && insertDist.Cmp(currPeerEntry.Distance) < 0 {
 				curr = curr.Prev()
 				if curr != nil {
@@ -91,8 +94,7 @@ func findClosest(idBytes []byte) *PeerEntry {
 	lowestIdealIdx := 0
 	for i := 0; i < 256; i++ {
 		dist := new(big.Int)
-		dist.Sub(idealPeerIds[i], id)
-		dist.Abs(dist)
+		dist.Xor(idealPeerIds[i], id)
 
 		if i == 0 {
 			lowestIdealDist = dist
