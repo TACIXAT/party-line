@@ -1,79 +1,39 @@
 package main
 
 import (
+	"bytes"
+	"container/list"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"github.com/kevinburke/nacl/sign"
 	"math/big"
-	"container/list"
 )
 
-func calculateIdealTable(idBytes []byte) [256]*big.Int {
+var peerTable [256]*list.List
+var idealPeerIds [256]*big.Int
+
+type PeerEntry struct {
+	ID       sign.PublicKey
+	Distance *big.Int
+}
+
+func calculateIdealTable(idBytes []byte) {
 	id := new(big.Int)
 	id.SetBytes(idBytes)
 
 	mask := new(big.Int)
 	mask.SetUint64(1)
 
-	var idealPeerIds [256]*big.Int
 	for i := 0; i < len(idBytes)*8; i++ {
 		idealPeerId := new(big.Int)
 		idealPeerId.Xor(id, mask)
 		idealPeerIds[i] = idealPeerId
 		mask.Lsh(mask, 1)
 	}
-
-	return idealPeerIds
 }
 
-func getFakePeers() [][]byte {
-	var peers [][]byte
-	for i := 0; i < 10000; i++ {
-		id := make([]byte, 32)
-		rand.Read(id)
-		peers = append(peers, id)
-		// fmt.Println(hex.EncodeToString(id))
-	}
-
-	return peers
-}
-
-func findClosest(idealPeerIds [256]*big.Int, idBytes []byte) {
-	id := new(big.Int)
-	id.SetBytes(idBytes)
-
-	lowestDist := new(big.Int)
-	lowestIdx := 0
-	for i := 0; i < 256; i++ {
-		dist := new(big.Int)
-		dist.Sub(idealPeerIds[i], id)
-		// fmt.Println("ideal", idealPeerIds[i])
-		// fmt.Println("id", id)
-		dist.Abs(dist)
-		// fmt.Println("dist", dist)
-		// fmt.Println()
-
-		if i == 0 {
-			lowestDist = dist
-			lowestIdx = i
-		}
-		// fmt.Println(dist.Cmp(lowestDist))
-		if dist.Cmp(lowestDist) < 0 {
-			lowestDist = dist
-			lowestIdx = i
-		}
-	}
-
-	if lowestIdx < 241 {
-		fmt.Println("id   ", id)
-		fmt.Println("ideal", idealPeerIds[lowestIdx])
-		fmt.Println("dist ", lowestDist)
-		fmt.Println(lowestIdx)
-	}
-}
-
-func addPeer(peerTable *[256]*list.List, idealPeerIds [256]*big.Int, id []byte) {
+func addPeer(id []byte, trace bool) {
 	insertId := new(big.Int)
 	insertId.SetBytes(id)
 	for i := 0; i < 256; i++ {
@@ -82,14 +42,19 @@ func addPeer(peerTable *[256]*list.List, idealPeerIds [256]*big.Int, id []byte) 
 		insertDist.Abs(insertDist)
 
 		last := peerTable[i].Back()
-		lastPeerEntry := last.Value.(*PeerEntry)
-		if insertDist.Cmp(lastPeerEntry.Distance) < 0 {
-			insertEntry := new(PeerEntry) 
-			insertEntry.ID = id
-			insertEntry.Distance = insertDist
-			
+
+		insertEntry := new(PeerEntry)
+		insertEntry.ID = id
+		insertEntry.Distance = insertDist
+
+		if last == nil {
+			peerTable[i].PushBack(insertEntry)
+		} else {
+			lastPeerEntry := last.Value.(*PeerEntry)
+
 			curr := last
 			currPeerEntry := lastPeerEntry
+
 			for curr != nil && insertDist.Cmp(currPeerEntry.Distance) < 0 {
 				curr = curr.Prev()
 				if curr != nil {
@@ -110,20 +75,73 @@ func addPeer(peerTable *[256]*list.List, idealPeerIds [256]*big.Int, id []byte) 
 	}
 }
 
-/*
-	var lists [256]*list
-	populate self on all lists
-	add peer:
-		for list in lists
-			if peer further than furthest (ensure closer than self)
-				continue
-			
-			insert peer
-*/
+func initTable(id []byte) {
+	idInt := new(big.Int)
+	idInt.SetBytes(id)
 
-type PeerEntry struct {
-	ID sign.PublicKey
-	Distance *big.Int
+	for i := 0; i < 256; i++ {
+		peerTable[i] = list.New()
+	}
+}
+
+func getFakePeers() [][]byte {
+	var peers [][]byte
+	for i := 0; i < 10000; i++ {
+		id := make([]byte, 32)
+		rand.Read(id)
+		peers = append(peers, id)
+		// fmt.Println(hex.EncodeToString(id))
+	}
+
+	return peers
+}
+
+func findClosest(idBytes, selfID []byte) *PeerEntry {
+	id := new(big.Int)
+	id.SetBytes(idBytes)
+
+	// find lowest of ideal table
+	lowestIdealDist := new(big.Int)
+	lowestIdealIdx := 0
+	for i := 0; i < 256; i++ {
+		dist := new(big.Int)
+		dist.Sub(idealPeerIds[i], id)
+		dist.Abs(dist)
+
+		if i == 0 {
+			lowestIdealDist = dist
+			lowestIdealIdx = i
+		}
+
+		if dist.Cmp(lowestIdealDist) < 0 {
+			lowestIdealDist = dist
+			lowestIdealIdx = i
+		}
+	}
+
+	// find lowest entry in bucket
+	closestDist := new(big.Int)
+	closestElement := peerTable[lowestIdealIdx].Front()
+	for curr := closestElement; curr != nil; curr = curr.Next() {
+		entry := curr.Value.(*PeerEntry)
+		entryDist := new(big.Int)
+		entryDist.SetBytes(entry.ID)
+		entryDist.Xor(entryDist, id)
+		if entryDist.Cmp(closestDist) < 0 {
+			closestDist = entryDist
+			closestElement = curr
+		}
+	}
+
+	entry := closestElement.Value.(*PeerEntry)
+	if bytes.Compare(entry.ID, selfID) == 0 {
+		fmt.Println()
+		fmt.Println(hex.EncodeToString(entry.ID))
+		fmt.Println(hex.EncodeToString(idBytes))
+		fmt.Println(lowestIdealIdx)
+	}
+
+	return closestElement.Value.(*PeerEntry)
 }
 
 func main() {
@@ -135,7 +153,7 @@ func main() {
 
 	fmt.Println(hex.EncodeToString(id))
 
-	idealPeerIds := calculateIdealTable(id)
+	calculateIdealTable(id)
 	fakePeers := getFakePeers()
 
 	fmt.Println(len(idealPeerIds))
@@ -146,28 +164,40 @@ func main() {
 	// var peerTable [256][]byte
 	// fmt.Println(len(peerTable[0]))
 
-	var peerTable [256]*list.List
-	idInt := new(big.Int)
-	idInt.SetBytes(id)
-	for i := 0; i < 256; i++ {
-		peerDist := new(big.Int)
-		peerDist.Sub(idealPeerIds[i], idInt)
-		peerDist.Abs(peerDist)
-
-		peerEntry := new(PeerEntry) 
-		peerEntry.ID = id
-		peerEntry.Distance = peerDist
-
-		peerTable[i] = list.New()
-		peerTable[i].PushFront(peerEntry)
-	}
+	initTable(id)
 
 	for i := 0; i < 10000; i++ {
-		addPeer(&peerTable, idealPeerIds, fakePeers[i])
-		// fmt.Println()
+		addPeer(fakePeers[i], false)
 	}
 
 	for i := 0; i < 256; i++ {
-		fmt.Println(hex.EncodeToString(peerTable[i].Front().Value.(*PeerEntry).ID), peerTable[i].Len())
+		fmt.Println(i, hex.EncodeToString(peerTable[i].Front().Value.(*PeerEntry).ID), peerTable[i].Len())
 	}
+
+	self := 0
+	exact := 0
+	other := 0
+	for i := 0; i < 10000; i++ {
+		closest := findClosest(fakePeers[i], id)
+		if bytes.Compare(closest.ID, id) == 0 {
+			self++
+			initTable(id)
+			for j := 0; j < 10000; j++ {
+				trace := false
+				if j == i {
+					trace = true
+				}
+				addPeer(fakePeers[j], trace)
+			}
+		} else if bytes.Compare(closest.ID, fakePeers[i]) == 0 {
+			exact++
+		} else {
+			other++
+		}
+	}
+
+	fmt.Println()
+	fmt.Println("self ", self)
+	fmt.Println("exact", exact)
+	fmt.Println("other", other)
 }
