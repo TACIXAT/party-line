@@ -26,7 +26,7 @@ func initTable(id []byte) {
 		peerDist := new(big.Int)
 		peerDist.Xor(idealPeerIds[i], idInt)
 
-		peerEntry := new(PeerEntry) 
+		peerEntry := new(PeerEntry)
 		peerEntry.ID = id
 		peerEntry.Distance = peerDist
 
@@ -61,10 +61,10 @@ func addPeer(id []byte) {
 		last := peerTable[i].Back()
 		lastPeerEntry := last.Value.(*PeerEntry)
 		if insertDist.Cmp(lastPeerEntry.Distance) < 0 {
-			insertEntry := new(PeerEntry) 
+			insertEntry := new(PeerEntry)
 			insertEntry.ID = id
 			insertEntry.Distance = insertDist
-			
+
 			curr := last
 			currPeerEntry := lastPeerEntry
 			for curr != nil && insertDist.Cmp(currPeerEntry.Distance) < 0 {

@@ -67,9 +67,6 @@ type MessageChat struct {
 
 var self Self
 
-// var peerTable map[string]Peer
-var idealTable [256]string
-
 var chatChan chan string
 var statusChan chan string
 
@@ -106,7 +103,7 @@ func processBootstrap(env *Envelope) {
 		return
 	}
 
-	var peer Peer
+	peer := new(Peer)
 	peer.ID = bs.ID
 	peer.Handle = bs.Handle
 	peer.EncPub = bs.EncPub
@@ -128,14 +125,14 @@ func processBootstrap(env *Envelope) {
 	peer.Conn = peerConn
 	sendVerify(peer)
 	sendTable(peer)
-	// insertPeer(peer)
+	addPeer(peer)
 }
 
-func sendTable(peer Peer) {
+func sendTable(peer *Peer) {
 
 }
 
-func sendVerify(peer Peer) {
+func sendVerify(peer *Peer) {
 	env := Envelope{
 		Type: "verifybs",
 		From: self.ID,
@@ -168,9 +165,63 @@ func sendVerify(peer Peer) {
 	setStatus("verify sent")
 }
 
+func processVerify(env *Envelope) {
+	fromPub, err := hex.DecodeString(env.From)
+	if err != nil {
+		log.Println(err)
+		setStatus("error decoding hex (bsverify:from)")
+		return
+	}
+
+	data, err := hex.DecodeString(env.Data)
+	if err != nil {
+		log.Println(err)
+		setStatus("error decoding hex (bsverify:data)")
+		return
+	}
+
+	verified := sign.Verify(data, fromPub)
+	if !verified {
+		setStatus("questionable message integrity discarding (bsverify)")
+		return
+	}
+
+	jsonData := data[sign.SignatureSize:]
+
+	var bs MessageBootstrap
+	err = json.Unmarshal(jsonData, &bs)
+	if err != nil {
+		log.Println(err)
+		setStatus("error invalid json (bsverify)")
+		return
+	}
+
+	peer := new(Peer)
+	peer.ID = bs.ID
+	peer.Handle = bs.Handle
+	peer.EncPub = bs.EncPub
+	peer.SignPub = bs.SignPub
+	peer.Address = bs.Address
+
+	if env.From != peer.ID {
+		setStatus("id does not match from (bsverify)")
+		return
+	}
+
+	peerConn, err := net.Dial("udp", peer.Address)
+	if err != nil {
+		log.Println(err)
+		setStatus("could not connect to peer (bsverify)")
+		return
+	}
+
+	peer.Conn = peerConn
+	addPeer(peer)
+}
+
 func processMessage(strMsg string) {
-	var env Envelope
-	err := json.Unmarshal([]byte(strMsg), &env)
+	env := new(Envelope)
+	err := json.Unmarshal([]byte(strMsg), env)
 	if err != nil {
 		log.Println(err)
 		setStatus("invalid json message received")
@@ -179,7 +230,9 @@ func processMessage(strMsg string) {
 
 	switch env.Type {
 	case "bootstrap":
-		processBootstrap(&env)
+		processBootstrap(env)
+	case "verifybs":
+		processVerify(env)
 	default:
 		setStatus("unknown msg type: " + env.Type)
 	}
