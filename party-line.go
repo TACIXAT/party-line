@@ -2,7 +2,7 @@ package main
 
 import (
 	"bufio"
-	"bytes"
+	// "bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
