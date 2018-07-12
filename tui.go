@@ -17,19 +17,12 @@ var messageBox *termui.Par
 
 func formatChats() string {
 	chatStr := ""
-	start := 0
-	if messageBox != nil {
-		start = len(chatLog) - messageBox.Height
-
-		if start < 0 {
-			start = 0
-		}
-	}
-
-	for i := start; i < len(chatLog); i++ {
+	for i := 0; i < len(chatLog); i++ {
 		chat := chatLog[i]
 		chatStr += chat.Time.Format("15:04:05 ") + chat.ID[:6] + " " + chat.Message + "\n"
 	}
+	// calcHeight
+	// truncate
 	return chatStr
 }
 
@@ -171,7 +164,11 @@ func userInterface() {
 		if len(buf) > 0 {
 			buf = buf[:len(buf)-1]
 		}
-		inputBox.Text = buf
+		start := len(buf) - inputBox.Width + 2
+		if start < 0 {
+			start = 0
+		}
+		inputBox.Text = buf[start:]
 		termui.Clear()
 		termui.Render(termui.Body)
 	})
@@ -180,21 +177,29 @@ func userInterface() {
 		if len(buf) > 0 {
 			buf = buf[:len(buf)-1]
 		}
-		inputBox.Text = buf
+		start := len(buf) - inputBox.Width + 2
+		if start < 0 {
+			start = 0
+		}
+		inputBox.Text = buf[start:]
 		termui.Clear()
 		termui.Render(termui.Body)
 	})
 
 	termui.Handle("/sys/kbd/<space>", func(evt termui.Event) {
 		buf += " "
-		inputBox.Text = buf
+		start := len(buf) - inputBox.Width + 2
+		if start < 0 {
+			start = 0
+		}
+		inputBox.Text = buf[start:]
 		termui.Clear()
 		termui.Render(termui.Body)
 	})
 
 	termui.Handle("/sys/kbd/", func(evt termui.Event) {
 		buf += evt.Data.(termui.EvtKbd).KeyStr
-		start := len(buf) - inputBox.Width
+		start := len(buf) - inputBox.Width + 2
 		if start < 0 {
 			start = 0
 		}
