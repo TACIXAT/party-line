@@ -21,9 +21,10 @@ import (
 
 /*
 TODO:
+	chat - unique peers
+
 	send table
 	announce
-	chat
 	pulse
 	disconnect
 	private message
@@ -262,6 +263,7 @@ func sendChat(msg string) {
 		return
 	}
 
+	sendPeers := make(map[string]*Peer)
 	for _, list := range peerTable {
 		curr := list.Front()
 		currEntry := curr.Value.(*PeerEntry)
@@ -271,16 +273,21 @@ func sendChat(msg string) {
 			continue
 		}
 
-		// closed := box.EasySeal([]byte(jsonChat), peer.EncPub, self.EncPrv)
-		signed := sign.Sign([]byte(jsonChat), self.SignPrv)
-		env.Data = hex.EncodeToString(signed)
-		jsonEnv, err := json.Marshal(env)
 		if err != nil {
 			log.Println(err)
 			continue
 		}
 
-		currPeer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
+		sendPeers[currPeer.ID] = currPeer
+	}
+
+	signed := sign.Sign([]byte(jsonChat), self.SignPrv)
+	env.Data = hex.EncodeToString(signed)
+	jsonEnv, err := json.Marshal(env)
+
+	for _, peer := range sendPeers {
+		// closed := box.EasySeal([]byte(jsonChat), peer.EncPub, self.EncPrv)
+		peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
 	}
 	setStatus("chat sent")
 }

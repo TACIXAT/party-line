@@ -57,8 +57,7 @@ func addPeer(peer *Peer) {
 
 	for i := 0; i < 256; i++ {
 		insertDist := new(big.Int)
-		insertDist.Sub(idealPeerIds[i], insertId)
-		insertDist.Abs(insertDist)
+		insertDist.Xor(idealPeerIds[i], insertId)
 
 		last := peerTable[i].Back()
 		lastPeerEntry := last.Value.(*PeerEntry)
