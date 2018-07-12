@@ -13,10 +13,20 @@ type Chat struct {
 }
 
 var chatLog []Chat
+var messageBox *termui.Par
 
 func formatChats() string {
 	chatStr := ""
-	for i := 0; i < len(chatLog); i++ {
+	start := 0
+	if messageBox != nil {
+		start = len(chatLog) - messageBox.Height
+
+		if start < 0 {
+			start = 0
+		}
+	}
+
+	for i := start; i < len(chatLog); i++ {
 		chat := chatLog[i]
 		chatStr += chat.Time.Format("15:04:05 ") + chat.ID[:6] + " " + chat.Message + "\n"
 	}
@@ -68,19 +78,11 @@ func displayChat(from string, msgChat MessageChat) {
 
 	chatLog = append(chatLog, chat)
 	chats := formatChats()
-	chatChan <- chats	
+	chatChan <- chats
 }
 
 func handleChat(buf string) {
-	chatMsg := Chat{
-		Time:    time.Now(),
-		ID:      self.ID,
-		Message: buf}
-
-	chatLog = append(chatLog, chatMsg)
 	sendChat(buf)
-	chats := formatChats()
-	chatChan <- chats
 	setStatus("sent")
 }
 
@@ -125,7 +127,7 @@ func userInterface() {
 	}
 	defer termui.Close()
 
-	messageBox := termui.NewPar("")
+	messageBox = termui.NewPar("")
 	messageBox.Height = termui.TermHeight() - 4
 	messageBox.BorderLabel = "Party-Line"
 	messageBox.BorderLabelFg = termui.ColorYellow
@@ -192,7 +194,11 @@ func userInterface() {
 
 	termui.Handle("/sys/kbd/", func(evt termui.Event) {
 		buf += evt.Data.(termui.EvtKbd).KeyStr
-		inputBox.Text = buf
+		start := len(buf) - inputBox.Width
+		if start < 0 {
+			start = 0
+		}
+		inputBox.Text = buf[start:]
 		termui.Clear()
 		termui.Render(termui.Body)
 	})
