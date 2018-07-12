@@ -101,7 +101,6 @@ func processBootstrap(env *Envelope) {
 
 	jsonData := data[sign.SignatureSize:]
 	chatStatus(string(jsonData))
-	chatStatus(fmt.Sprintf("%d", len(jsonData)))
 
 	var bs MessageBootstrap
 	err = json.Unmarshal(jsonData, &bs)
@@ -227,6 +226,41 @@ func processVerify(env *Envelope) {
 	addPeer(peer)
 }
 
+func processChat(env *Envelope) {
+	fromPub, err := hex.DecodeString(env.From)
+	if err != nil {
+		log.Println(err)
+		setStatus("error decoding hex (chat:from)")
+		return
+	}
+
+	data, err := hex.DecodeString(env.Data)
+	if err != nil {
+		log.Println(err)
+		setStatus("error decoding hex (chat:data)")
+		return
+	}
+
+	verified := sign.Verify(data, fromPub)
+	if !verified {
+		setStatus("questionable message integrity discarding (chat)")
+		return
+	}
+
+	jsonData := data[sign.SignatureSize:]
+	chatStatus(string(jsonData))
+
+	var chat MessageChat
+	err = json.Unmarshal(jsonData, &chat)
+	if err != nil {
+		log.Println(err)
+		setStatus("error invalid json (chat)")
+		return
+	}
+
+	handleChat(chat.Chat)
+}
+
 func processMessage(strMsg string) {
 	env := new(Envelope)
 	err := json.Unmarshal([]byte(strMsg), env)
@@ -241,6 +275,8 @@ func processMessage(strMsg string) {
 		processBootstrap(env)
 	case "verifybs":
 		processVerify(env)
+	case "chat":
+		processChat(env)
 	default:
 		setStatus("unknown msg type: " + env.Type)
 	}
