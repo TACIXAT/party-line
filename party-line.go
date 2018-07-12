@@ -75,6 +75,7 @@ type MessageChat struct {
 
 var self Self
 
+var seenChats map[string]bool
 var chatChan chan string
 var statusChan chan string
 
@@ -226,6 +227,34 @@ func processVerify(env *Envelope) {
 	addPeer(peer)
 }
 
+func forwardChat(env *Envelope) {
+	jsonEnv, err := json.Marshal(env)
+
+	sendPeers := make(map[string]*Peer)
+	for _, list := range peerTable {
+		curr := list.Front()
+		currEntry := curr.Value.(*PeerEntry)
+		currPeer := currEntry.Entry
+
+		if currPeer == nil {
+			continue
+		}
+
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+
+		sendPeers[currPeer.ID] = currPeer
+	}
+
+	for _, peer := range sendPeers {
+		peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
+	}
+
+	setStatus("chat fowarded")
+}
+
 func processChat(env *Envelope) {
 	fromPub, err := hex.DecodeString(env.From)
 	if err != nil {
@@ -258,7 +287,12 @@ func processChat(env *Envelope) {
 		return
 	}
 
-	handleChat(chat.Chat)
+	uniqueID := env.From + "." + chat.Time.String()
+	_, seen := seenChats[uniqueID]
+	if !seen {
+		displayChat(env.From, chat)
+		forwardChat(env)
+	}
 }
 
 func processMessage(strMsg string) {
@@ -455,6 +489,7 @@ func main() {
 	calculateIdealTable(self.SignPub)
 	initTable(self.SignPub)
 
+	seenChats = make(map[string]bool)
 	chatChan = make(chan string, 1)
 	statusChan = make(chan string, 1)
 	bsId := fmt.Sprintf("%s/%s/%s", extIP.String(), portStr, self.ID)

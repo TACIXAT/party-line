@@ -60,6 +60,17 @@ func setStatus(status string) {
 	statusChan <- status
 }
 
+func displayChat(from string, msgChat MessageChat) {
+	chat := Chat{
+		Time:    msgChat.Time,
+		ID:      from,
+		Message: msgChat.Chat}
+
+	chatLog = append(chatLog, chat)
+	chats := formatChats()
+	chatChan <- chats	
+}
+
 func handleChat(buf string) {
 	chatMsg := Chat{
 		Time:    time.Now(),
