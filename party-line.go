@@ -267,7 +267,7 @@ func sendChat(msg string) {
 		currEntry := curr.Value.(*PeerEntry)
 		currPeer := currEntry.Entry
 
-		if bytes.Compare(currPeer.SignPub, self.SignPub) == 0 {
+		if currPeer == nil {
 			continue
 		}
 
