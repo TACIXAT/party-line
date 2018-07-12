@@ -15,14 +15,52 @@ type Chat struct {
 var chatLog []Chat
 var messageBox *termui.Par
 
+func formatChatsFit() string {
+	height := messageBox.Height - 2
+	width := messageBox.Height - 2
+
+	chatStr := ""
+	msgs := make([]string, 0)
+	lengths := make([]int, 0)
+	for i := 0; i < len(chatLog); i++ {
+		chat := chatLog[i]
+		msg := chat.Time.Format("15:04:05 ") + chat.ID[:6] + " " + chat.Message
+		msgs = append(msgs, msg)
+		length := len(msg) / width + 1
+		lengths = append(lengths, length)
+	}
+
+	linesUsed := 0
+	for i := len(msgs)-1; i > -1 && linesUsed < height; i-- {
+		msg := msgs[i]
+
+		if i != len(msgs)-1 {
+			msg += "\n"
+		}
+
+		chatStr = msg + chatStr
+		linesUsed++
+	}
+
+	return chatStr
+}
+
 func formatChats() string {
+	if messageBox != nil {
+		return formatChatsFit()
+	}
+
 	chatStr := ""
 	for i := 0; i < len(chatLog); i++ {
 		chat := chatLog[i]
-		chatStr += chat.Time.Format("15:04:05 ") + chat.ID[:6] + " " + chat.Message + "\n"
+		if i != 0 {
+			chatStr += "\n"
+		}
+
+		msg := chat.Time.Format("15:04:05 ") + chat.ID[:6] + " " + chat.Message
+		chatStr += msg
 	}
-	// calcHeight
-	// truncate
+
 	return chatStr
 }
 
