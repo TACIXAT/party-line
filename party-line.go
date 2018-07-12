@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -244,35 +245,45 @@ func processMessage(strMsg string) {
 	}
 }
 
-// func sendChat(msg string) {
-// 	env := Envelope{
-// 		Type: "chat",
-// 		From: self.ID,
-// 		To:   "",
-// 		Data: ""}
+func sendChat(msg string) {
+	env := Envelope{
+		Type: "chat",
+		From: self.ID,
+		To:   "",
+		Data: ""}
 
-// 	chat := MessageChat{
-// 		Chat: msg,
-// 		Time: time.Now()}
+	chat := MessageChat{
+		Chat: msg,
+		Time: time.Now()}
 
-// 	jsonChat, err := json.Marshal(chat)
-// 	if err != nil {
-// 		log.Println(err)
-// 		return
-// 	}
+	jsonChat, err := json.Marshal(chat)
+	if err != nil {
+		log.Println(err)
+		return
+	}
 
-// 	for _, peer := range peerTable {
-// 		// closed := box.EasySeal([]byte(jsonChat), peer.EncPub, self.EncPrv)
-// 		signed := sign.Sign([]byte(jsonChat), self.SignPrv)
-// 		env.Data = hex.EncodeToString(signed)
-// 		jsonEnv, err := json.Marshal(env)
-// 		if err != nil {
-// 			log.Println(err)
-// 			continue
-// 		}
-// 		peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
-// 	}
-// }
+	for _, list := range peerTable {
+		curr := list.Front()
+		currEntry := curr.Value.(*PeerEntry)
+		currPeer := currEntry.Entry
+
+		if bytes.Compare(currPeer.SignPub, self.SignPub) == 0 {
+			continue
+		}
+
+		// closed := box.EasySeal([]byte(jsonChat), peer.EncPub, self.EncPrv)
+		signed := sign.Sign([]byte(jsonChat), self.SignPrv)
+		env.Data = hex.EncodeToString(signed)
+		jsonEnv, err := json.Marshal(env)
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+
+		currPeer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
+	}
+	setStatus("chat sent")
+}
 
 func sendBootstrap(addr, peerId string) {
 	env := Envelope{

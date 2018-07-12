@@ -67,6 +67,7 @@ func handleChat(buf string) {
 		Message: buf}
 
 	chatLog = append(chatLog, chatMsg)
+	sendChat(buf)
 	chats := formatChats()
 	chatChan <- chats
 	setStatus("sent")
