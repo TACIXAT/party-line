@@ -292,6 +292,7 @@ func processChat(env *Envelope) {
 	if !seen {
 		displayChat(env.From, chat)
 		forwardChat(env)
+		seenChats[uniqueID] = true
 	}
 }
 
