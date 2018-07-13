@@ -116,6 +116,11 @@ func displayChat(from string, msgChat MessageChat) {
 	chatChan <- chats
 }
 
+func redrawChats() {
+	chats := formatChats()
+	chatChan <- chats	
+}
+
 func handleChat(buf string) {
 	sendChat(buf)
 	setStatus("sent")
@@ -256,6 +261,7 @@ func userInterface() {
 		termui.Body.Align()
 		termui.Clear()
 		termui.Render(termui.Body)
+		redrawChats()
 	})
 
 	termui.Loop()
