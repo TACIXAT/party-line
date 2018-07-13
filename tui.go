@@ -23,7 +23,7 @@ func formatChatsFit() string {
 	for i := 0; i < len(chatLog); i++ {
 		chat := chatLog[i]
 		msg := chat.Time.Format("15:04:05 ") + chat.ID[:6] + " " + chat.Message
-		if msg[len(msg)-1] != '\n' {
+		if i != len(chatLog)-1 && msg[len(msg)-1] != '\n' {
 			msg += "\n"
 		}
 
@@ -41,10 +41,10 @@ func formatChatsFit() string {
 		}
 	}
 
-	start := len(lines)-height
+	start := len(lines) - height
 	if start < 0 {
 		start = 0
-	} 
+	}
 
 	return strings.Join(lines[start:], "")
 }
