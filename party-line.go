@@ -21,8 +21,6 @@ import (
 
 /*
 TODO:
-	chat - unique peers
-
 	send table
 	announce
 	pulse
@@ -101,7 +99,6 @@ func processBootstrap(env *Envelope) {
 	}
 
 	jsonData := data[sign.SignatureSize:]
-	chatStatus(string(jsonData))
 
 	var bs MessageBootstrap
 	err = json.Unmarshal(jsonData, &bs)
@@ -225,6 +222,8 @@ func processVerify(env *Envelope) {
 
 	peer.Conn = peerConn
 	addPeer(peer)
+	setStatus("bs success")
+	chatStatus("happy chatting!")
 }
 
 func forwardChat(env *Envelope) {
@@ -277,7 +276,6 @@ func processChat(env *Envelope) {
 	}
 
 	jsonData := data[sign.SignatureSize:]
-	chatStatus(string(jsonData))
 
 	var chat MessageChat
 	err = json.Unmarshal(jsonData, &chat)
@@ -392,8 +390,6 @@ func sendBootstrap(addr, peerId string) {
 		return
 	}
 
-	chatStatus(string(jsonEnv))
-
 	conn, err := net.Dial("udp", addr)
 	if err != nil {
 		log.Println(err)
@@ -446,7 +442,6 @@ func recv(address string, port uint16) {
 			setStatus("error reading")
 		}
 
-		chatStatus("got: " + line)
 		processMessage(line)
 	}
 

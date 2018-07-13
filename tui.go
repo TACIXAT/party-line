@@ -118,7 +118,7 @@ func displayChat(from string, msgChat MessageChat) {
 
 func redrawChats() {
 	chats := formatChats()
-	chatChan <- chats	
+	chatChan <- chats
 }
 
 func handleChat(buf string) {
