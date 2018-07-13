@@ -17,32 +17,36 @@ var messageBox *termui.Par
 
 func formatChatsFit() string {
 	height := messageBox.Height - 2
-	width := messageBox.Height - 2
+	width := messageBox.Width - 2
 
-	chatStr := ""
-	msgs := make([]string, 0)
-	lengths := make([]int, 0)
+	lines := make([]string, 0)
 	for i := 0; i < len(chatLog); i++ {
 		chat := chatLog[i]
 		msg := chat.Time.Format("15:04:05 ") + chat.ID[:6] + " " + chat.Message
-		msgs = append(msgs, msg)
-		length := len(msg) / width + 1
-		lengths = append(lengths, length)
-	}
-
-	linesUsed := 0
-	for i := len(msgs)-1; i > -1 && linesUsed < height; i-- {
-		msg := msgs[i]
-
-		if i != len(msgs)-1 {
+		if msg[len(msg)-1] != '\n' {
 			msg += "\n"
 		}
 
-		chatStr = msg + chatStr
-		linesUsed++
+		length := len(msg) / width
+
+		for length > 0 {
+			line := msg[:width]
+			msg = msg[width:]
+			lines = append(lines, line)
+			length--
+		}
+
+		if len(msg) > 0 {
+			lines = append(lines, msg)
+		}
 	}
 
-	return chatStr
+	start := len(lines)-height
+	if start < 0 {
+		start = 0
+	} 
+
+	return strings.Join(lines[start:], "")
 }
 
 func formatChats() string {
