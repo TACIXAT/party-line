@@ -10,8 +10,40 @@ import (
 	"time"
 )
 
+func flood(env *Envelope) {
+	jsonEnv, err := json.Marshal(env)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	sentPeers := make(map[string]bool)
+	for _, list := range peerTable {
+		for curr := list.Front(); curr != nil; curr = curr.Next() {
+			currEntry := curr.Value.(*PeerEntry)
+			currPeer := currEntry.Entry
+
+			if currPeer == nil {
+				continue
+			}
+
+			_, sent := sentPeers[currPeer.ID]
+			if !sent {
+				currPeer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
+				sentPeers[currPeer.ID] = true
+			}
+		}
+	}
+
+	setStatus("flooded")
+}
+
 func forwardChat(env *Envelope) {
 	jsonEnv, err := json.Marshal(env)
+	if err != nil {
+		log.Println(err)
+		return
+	}
 
 	sendPeers := make(map[string]*Peer)
 	for _, list := range peerTable {
@@ -23,11 +55,6 @@ func forwardChat(env *Envelope) {
 			continue
 		}
 
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-
 		sendPeers[currPeer.ID] = currPeer
 	}
 
@@ -36,6 +63,20 @@ func forwardChat(env *Envelope) {
 	}
 
 	setStatus("chat fowarded")
+}
+
+func sendSuggestionRequest(peer *Peer) {
+	// env := Envelope{
+	// 	Type: "suggestionRequest",
+	// 	From: self.ID,
+	// 	To:   peer.ID,
+	// 	Data: ""}
+
+	// jsonBs, err := json.Marshal(peerSelf)
+	// if err != nil {
+	// 	log.Println(err)
+	// 	return
+	// }
 }
 
 func sendSuggestions(peer *Peer) {
@@ -171,4 +212,30 @@ func sendBootstrap(addr, peerId string) {
 
 	conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
 	setStatus("bs sent")
+}
+
+func sendAnnounce(peer *Peer) {
+	env := Envelope{
+		Type: "announce",
+		From: self.ID,
+		To:   "",
+		Data: ""}
+
+	jsonAnnounce, err := json.Marshal(peerSelf)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	signed := sign.Sign([]byte(jsonAnnounce), self.SignPrv)
+	env.Data = hex.EncodeToString(signed)
+
+	jsonEnv, err := json.Marshal(env)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
+	setStatus("announce sent")
 }

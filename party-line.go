@@ -73,6 +73,7 @@ var self Self
 var peerSelf Peer
 
 var seenChats map[string]bool
+var seenPeers map[string]bool
 var chatChan chan string
 var statusChan chan string
 

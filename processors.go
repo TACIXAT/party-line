@@ -27,7 +27,7 @@ func processMessage(strMsg string) {
 	case "chat":
 		processChat(env)
 	default:
-		setStatus("unknown msg type: " + env.Type)
+		chatStatus("unknown msg type: " + env.Type)
 	}
 }
 
@@ -150,7 +150,32 @@ func processVerify(env *Envelope) {
 	peer.Conn = peerConn
 	addPeer(peer)
 	setStatus("verified")
+	sendAnnounce(peer)
+	sendSuggestionRequest(peer)
 	chatStatus("happy chatting!")
+}
+
+func processAnnounce(env *Envelope) {
+	jsonData, err := verifyEnvelope(env, "announce")
+	if err != nil {
+		setStatus(err.Error())
+		return
+	}
+
+	peer := new(Peer)
+	err = json.Unmarshal(jsonData, peer)
+	if err != nil {
+		log.Println(err)
+		setStatus("error invalid json (announce)")
+		return
+	}
+
+	_, seen := seenPeers[peer.ID]
+	if !seen {
+		addPeer(peer)
+		flood(env)
+		seenPeers[peer.ID] = true
+	}
 }
 
 // func processSuggestionRequest(env *Envelope) {
