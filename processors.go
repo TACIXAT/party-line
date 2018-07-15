@@ -155,7 +155,7 @@ func processBootstrap(env *Envelope) {
 
 	peer.Conn = peerConn
 
-	jsonPeer, err := json.Marshal(*peer)
+	jsonPeer, err = json.Marshal(*peer)
 	if err != nil {
 		chatStatus(fmt.Sprintf("size of encoded peer w/ conn: %d", len(jsonPeer)))
 	}
