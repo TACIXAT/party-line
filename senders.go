@@ -29,7 +29,11 @@ func flood(env *Envelope) {
 
 			_, sent := sentPeers[currPeer.ID]
 			if !sent {
-				currPeer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
+				if currPeer.Conn != nil {
+					currPeer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
+				} else {
+					chatStatus(fmt.Sprintf("currPeer conn nil %s", currPeer.ID))
+				}
 				sentPeers[currPeer.ID] = true
 			}
 		}
@@ -100,9 +104,9 @@ func sendSuggestions(peer *Peer) {
 	}
 
 	// truncate
-	// each encoded peer is about 303 bytes
+	// each encoded peer is about 300 bytes
 	// this tops things off around 38kb
-	// well below max udp packet size
+	// well below max udp packet size (65kb)
 	if len(peerSet) > 128 {
 		peerSet = peerSet[:128]
 	}
