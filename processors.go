@@ -136,7 +136,7 @@ func processBootstrap(env *Envelope) {
 	peer.SignPub = bs.SignPub
 	peer.Address = bs.Address
 
-	jsonPeer, err := json.Marshal(peer)
+	jsonPeer, err := json.Marshal(*peer)
 	if err != nil {
 		chatStatus(fmt.Sprintf("size of encoded peer: %d", len(jsonPeer)))
 	}
@@ -155,7 +155,7 @@ func processBootstrap(env *Envelope) {
 
 	peer.Conn = peerConn
 
-	jsonPeer, err = json.Marshal(peer)
+	jsonPeer, err := json.Marshal(*peer)
 	if err != nil {
 		chatStatus(fmt.Sprintf("size of encoded peer w/ conn: %d", len(jsonPeer)))
 	}
