@@ -35,7 +35,9 @@ func initTable(idBytes []byte) {
 	}
 }
 
-func calculateIdealTable(idBytes []byte) {
+func calculateIdealTable(idBytes []byte) [256]*big.Int {
+	var idealIds [256]*big.Int
+
 	idInt := new(big.Int)
 	idInt.SetBytes(idBytes)
 
@@ -45,9 +47,15 @@ func calculateIdealTable(idBytes []byte) {
 	for i := 0; i < len(idBytes)*8; i++ {
 		idealPeerId := new(big.Int)
 		idealPeerId.Xor(idInt, mask)
-		idealPeerIds[i] = idealPeerId
+		idealIds[i] = idealPeerId
 		mask.Lsh(mask, 1)
 	}
+
+	return idealIds
+}
+
+func calculateIdealTableSelf(idBytes []byte) {
+	idealPeerIds = calculateIdealTable(idBytes)
 }
 
 func addPeer(peer *Peer) {

@@ -160,7 +160,7 @@ func main() {
 	self.Address = extIP.String() + ":" + portStr
 	getKeys()
 
-	calculateIdealTable(self.SignPub)
+	calculateIdealTableSelf(self.SignPub)
 	initTable(self.SignPub)
 
 	seenChats = make(map[string]bool)

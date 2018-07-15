@@ -24,6 +24,26 @@ func sendVerify(peer *Peer) {
 		Address: self.Address,
 		SignPub: self.SignPub}
 
+	// calculate ideal for id
+	peerIdealTable := calculateIdealTable(peer.SignPub)
+
+	// find closest for each and make a unique list
+	peerSetHelper := make(map[string]bool)
+	peerSet := make([]Peer, 0)
+	for _, idInt := range peerIdealTable {
+		closestPeerEntry := findClosest(idInt.Bytes())
+		if closestPeerEntry.Entry != nil {
+			closestPeer := closestPeerEntry.Entry
+			_, contains := peerSetHelper[closestPeer.ID]
+			if !contains {
+				peerSetHelper[closestPeer.ID] = true
+				peerSet := append(peerSet, *closestPeer)
+			}
+		}
+	}
+
+	// truncate
+
 	jsonBs, err := json.Marshal(bs)
 	if err != nil {
 		log.Println(err)
@@ -41,40 +61,6 @@ func sendVerify(peer *Peer) {
 
 	peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
 	setStatus("verify sent")
-}
-
-func sendTable(peer *Peer) {
-	sendPeers := make(map[string]*Peer)
-	for _, list := range peerTable {
-		curr := list.Front()
-		currEntry := curr.Value.(*PeerEntry)
-		currPeer := currEntry.Entry
-
-		if currPeer == nil {
-			continue
-		}
-
-		sendPeers[currPeer.ID] = currPeer
-	}
-
-	if len(sendPeers) == 0 {
-		setStatus("no unique peers, table not sent")
-		return
-	}
-
-	uniquePeers := make([]Peer, 0)
-	for _, peer := range sendPeers {
-		uniquePeers = append(uniquePeers, *peer)
-	}
-
-	for i := 0; i*64 < len(uniquePeers); i++ {
-		jsonTable, err := json.Marshal(uniquePeers[i*64 : (i+1)*64])
-		if err != nil {
-			setStatus("error encoding peer list")
-			continue
-		}
-		chatStatus(fmt.Sprintf("size of 64 peers in JSON: %d\n", len(jsonTable)))
-	}
 }
 
 func sendChat(msg string) {
