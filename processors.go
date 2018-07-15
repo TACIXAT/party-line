@@ -173,9 +173,9 @@ func processAnnounce(env *Envelope) {
 
 		peer.Conn = peerConn
 		addPeer(peer)
+		seenPeers[peer.ID] = true
 
 		flood(env)
-		seenPeers[peer.ID] = true
 	}
 }
 
