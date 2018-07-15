@@ -49,7 +49,7 @@ type Peer struct {
 	EncPub  nacl.Key
 	SignPub sign.PublicKey
 	Address string
-	Conn    net.Conn
+	Conn    net.Conn `json:"-"`
 }
 
 type Envelope struct {
@@ -59,12 +59,9 @@ type Envelope struct {
 	Data string
 }
 
-type MessageBootstrap struct {
-	ID      string
-	Handle  string
-	EncPub  nacl.Key
-	SignPub sign.PublicKey
-	Address string
+type MessageSuggested struct {
+	Peer           Peer
+	SuggestedPeers []Peer
 }
 
 type MessageChat struct {
@@ -73,6 +70,7 @@ type MessageChat struct {
 }
 
 var self Self
+var peerSelf Peer
 
 var seenChats map[string]bool
 var chatChan chan string
@@ -92,11 +90,17 @@ func getKeys() {
 
 	self.ID = hex.EncodeToString(signPub[:])
 	self.Handle = *handleFlag
-	self.EncPub = encPub
-	self.EncPrv = encPrv
 	self.SignPub = signPub
 	self.SignPrv = signPrv
+	self.EncPub = encPub
+	self.EncPrv = encPrv
 	log.Println(self.ID)
+
+	peerSelf.ID = self.ID
+	peerSelf.Handle = self.Handle
+	peerSelf.SignPub = self.SignPub
+	peerSelf.EncPub = self.EncPub
+	peerSelf.Address = self.Address
 }
 
 func recv(address string, port uint16) {

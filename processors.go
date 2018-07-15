@@ -3,79 +3,12 @@ package main
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/kevinburke/nacl/sign"
 	"log"
 	"net"
 )
-
-func forwardChat(env *Envelope) {
-	jsonEnv, err := json.Marshal(env)
-
-	sendPeers := make(map[string]*Peer)
-	for _, list := range peerTable {
-		curr := list.Front()
-		currEntry := curr.Value.(*PeerEntry)
-		currPeer := currEntry.Entry
-
-		if currPeer == nil {
-			continue
-		}
-
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-
-		sendPeers[currPeer.ID] = currPeer
-	}
-
-	for _, peer := range sendPeers {
-		peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
-	}
-
-	setStatus("chat fowarded")
-}
-
-func processChat(env *Envelope) {
-	fromPub, err := hex.DecodeString(env.From)
-	if err != nil {
-		log.Println(err)
-		setStatus("error decoding hex (chat:from)")
-		return
-	}
-
-	data, err := hex.DecodeString(env.Data)
-	if err != nil {
-		log.Println(err)
-		setStatus("error decoding hex (chat:data)")
-		return
-	}
-
-	verified := sign.Verify(data, fromPub)
-	if !verified {
-		setStatus("questionable message integrity discarding (chat)")
-		return
-	}
-
-	jsonData := data[sign.SignatureSize:]
-
-	var chat MessageChat
-	err = json.Unmarshal(jsonData, &chat)
-	if err != nil {
-		log.Println(err)
-		setStatus("error invalid json (chat)")
-		return
-	}
-
-	uniqueID := env.From + "." + chat.Time.String()
-	_, seen := seenChats[uniqueID]
-	if !seen {
-		displayChat(env.From, chat)
-		forwardChat(env)
-		seenChats[uniqueID] = true
-	}
-}
 
 func processMessage(strMsg string) {
 	env := new(Envelope)
@@ -98,46 +31,69 @@ func processMessage(strMsg string) {
 	}
 }
 
-func processBootstrap(env *Envelope) {
+func verifyEnvelope(env *Envelope, caller string) ([]byte, error) {
 	fromPub, err := hex.DecodeString(env.From)
 	if err != nil {
 		log.Println(err)
-		setStatus("error decoding hex (bs:from)")
-		return
+		return nil, errors.New(fmt.Sprintf("error decoding hex (%s:from)", caller))
 	}
 
 	data, err := hex.DecodeString(env.Data)
 	if err != nil {
 		log.Println(err)
-		setStatus("error decoding hex (bs:data)")
-		return
+		return nil, errors.New(fmt.Sprintf("error decoding hex (%s:data)", caller))
 	}
 
 	verified := sign.Verify(data, fromPub)
 	if !verified {
-		setStatus("questionable message integrity discarding (bs)")
-		return
+		return nil, errors.New(fmt.Sprintf("questionable message integrity discarding (%s)", caller))
 	}
 
 	jsonData := data[sign.SignatureSize:]
+	return jsonData, nil
+}
 
-	var bs MessageBootstrap
-	err = json.Unmarshal(jsonData, &bs)
+func processChat(env *Envelope) {
+	jsonData, err := verifyEnvelope(env, "chat")
+	if err != nil {
+		setStatus(err.Error())
+		return
+	}
+
+	var chat MessageChat
+	err = json.Unmarshal(jsonData, &chat)
+	if err != nil {
+		log.Println(err)
+		setStatus("error invalid json (chat)")
+		return
+	}
+
+	uniqueID := env.From + "." + chat.Time.String()
+	_, seen := seenChats[uniqueID]
+	if !seen {
+		displayChat(env.From, chat)
+		forwardChat(env)
+		seenChats[uniqueID] = true
+	}
+}
+
+func processBootstrap(env *Envelope) {
+	jsonData, err := verifyEnvelope(env, "bs")
+	if err != nil {
+		setStatus(err.Error())
+		return
+	}
+
+	peer := new(Peer)
+	err = json.Unmarshal(jsonData, peer)
 	if err != nil {
 		log.Println(err)
 		setStatus("error invalid json (bs)")
 		return
 	}
 
-	peer := new(Peer)
-	peer.ID = bs.ID
-	peer.Handle = bs.Handle
-	peer.EncPub = bs.EncPub
-	peer.SignPub = bs.SignPub
-	peer.Address = bs.Address
-
 	jsonPeer, err := json.Marshal(*peer)
-	if err != nil {
+	if err == nil {
 		chatStatus(fmt.Sprintf("size of encoded peer: %d", len(jsonPeer)))
 	}
 
@@ -156,7 +112,7 @@ func processBootstrap(env *Envelope) {
 	peer.Conn = peerConn
 
 	jsonPeer, err = json.Marshal(*peer)
-	if err != nil {
+	if err == nil {
 		chatStatus(fmt.Sprintf("size of encoded peer w/ conn: %d", len(jsonPeer)))
 	}
 
@@ -165,42 +121,19 @@ func processBootstrap(env *Envelope) {
 }
 
 func processVerify(env *Envelope) {
-	fromPub, err := hex.DecodeString(env.From)
+	jsonData, err := verifyEnvelope(env, "bsverify")
 	if err != nil {
-		log.Println(err)
-		setStatus("error decoding hex (bsverify:from)")
+		setStatus(err.Error())
 		return
 	}
 
-	data, err := hex.DecodeString(env.Data)
-	if err != nil {
-		log.Println(err)
-		setStatus("error decoding hex (bsverify:data)")
-		return
-	}
-
-	verified := sign.Verify(data, fromPub)
-	if !verified {
-		setStatus("questionable message integrity discarding (bsverify)")
-		return
-	}
-
-	jsonData := data[sign.SignatureSize:]
-
-	var bs MessageBootstrap
-	err = json.Unmarshal(jsonData, &bs)
+	peer := new(Peer)
+	err = json.Unmarshal(jsonData, peer)
 	if err != nil {
 		log.Println(err)
 		setStatus("error invalid json (bsverify)")
 		return
 	}
-
-	peer := new(Peer)
-	peer.ID = bs.ID
-	peer.Handle = bs.Handle
-	peer.EncPub = bs.EncPub
-	peer.SignPub = bs.SignPub
-	peer.Address = bs.Address
 
 	if env.From != peer.ID {
 		setStatus("id does not match from (bsverify)")
@@ -216,7 +149,16 @@ func processVerify(env *Envelope) {
 
 	peer.Conn = peerConn
 	addPeer(peer)
-	// add peers
-	setStatus("bs success")
+	setStatus("verified")
 	chatStatus("happy chatting!")
 }
+
+// func processSuggestionRequest(env *Envelope) {
+// 	jsonData, err := verifyEnvelope(env, "suggestionreq")
+// 	if err != nil {
+// 		setStatus(err.Error())
+// 		return
+// 	}
+
+// 	sendSuggestions(peer)
+// }

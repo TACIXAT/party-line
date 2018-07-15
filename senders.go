@@ -10,6 +10,65 @@ import (
 	"time"
 )
 
+func forwardChat(env *Envelope) {
+	jsonEnv, err := json.Marshal(env)
+
+	sendPeers := make(map[string]*Peer)
+	for _, list := range peerTable {
+		curr := list.Front()
+		currEntry := curr.Value.(*PeerEntry)
+		currPeer := currEntry.Entry
+
+		if currPeer == nil {
+			continue
+		}
+
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+
+		sendPeers[currPeer.ID] = currPeer
+	}
+
+	for _, peer := range sendPeers {
+		peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
+	}
+
+	setStatus("chat fowarded")
+}
+
+func sendSuggestions(peer *Peer) {
+	// calculate ideal for id
+	peerIdealTable := calculateIdealTable(peer.SignPub)
+
+	// find closest for each and make a unique list
+	peerSetHelper := make(map[string]bool)
+	peerSet := make([]Peer, 0)
+	peerSet = append(peerSet)
+	for _, idInt := range peerIdealTable {
+		closestPeerEntry := findClosest(idInt.Bytes())
+		if closestPeerEntry.Entry != nil {
+			closestPeer := closestPeerEntry.Entry
+			_, contains := peerSetHelper[closestPeer.ID]
+			if !contains {
+				peerSetHelper[closestPeer.ID] = true
+				peerSet = append(peerSet, *closestPeer)
+			}
+		}
+	}
+
+	// truncate
+	// each encoded peer is about 303 bytes
+	// this tops things off around 38kb
+	// well below max udp packet size
+	if len(peerSet) > 128 {
+		peerSet = peerSet[:128]
+	}
+
+	chatStatus(fmt.Sprintf("sending %d peers", len(peerSet)))
+}
+
 func sendVerify(peer *Peer) {
 	env := Envelope{
 		Type: "verifybs",
@@ -17,34 +76,7 @@ func sendVerify(peer *Peer) {
 		To:   peer.ID,
 		Data: ""}
 
-	bs := MessageBootstrap{
-		ID:      self.ID,
-		Handle:  self.Handle,
-		EncPub:  self.EncPub,
-		Address: self.Address,
-		SignPub: self.SignPub}
-
-	// calculate ideal for id
-	// peerIdealTable := calculateIdealTable(peer.SignPub)
-
-	// // find closest for each and make a unique list
-	// peerSetHelper := make(map[string]bool)
-	// peerSet := make([]Peer, 0)
-	// for _, idInt := range peerIdealTable {
-	// 	closestPeerEntry := findClosest(idInt.Bytes())
-	// 	if closestPeerEntry.Entry != nil {
-	// 		closestPeer := closestPeerEntry.Entry
-	// 		_, contains := peerSetHelper[closestPeer.ID]
-	// 		if !contains {
-	// 			peerSetHelper[closestPeer.ID] = true
-	// 			peerSet := append(peerSet, *closestPeer)
-	// 		}
-	// 	}
-	// }
-
-	// truncate
-
-	jsonBs, err := json.Marshal(bs)
+	jsonBs, err := json.Marshal(peerSelf)
 	if err != nil {
 		log.Println(err)
 		return
@@ -116,14 +148,7 @@ func sendBootstrap(addr, peerId string) {
 		To:   peerId,
 		Data: ""}
 
-	bs := MessageBootstrap{
-		ID:      self.ID,
-		Handle:  self.Handle,
-		EncPub:  self.EncPub,
-		Address: self.Address,
-		SignPub: self.SignPub}
-
-	jsonBs, err := json.Marshal(bs)
+	jsonBs, err := json.Marshal(peerSelf)
 	if err != nil {
 		log.Println(err)
 		return
