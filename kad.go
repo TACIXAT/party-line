@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"container/list"
+	"encoding/hex"
 	"github.com/kevinburke/nacl/sign"
+	"log"
 	"math/big"
 )
 
@@ -54,6 +57,28 @@ func calculateIdealTable(idBytes []byte) [256]*big.Int {
 
 func calculateIdealTableSelf(idBytes []byte) {
 	idealPeerIds = calculateIdealTable(idBytes)
+}
+
+func removePeer(peerId string) {
+	bytesId, err := hex.DecodeString(peerId)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	for i := 0; i < 256; i++ {
+		removeList := make([]*list.Element, 0)
+		for curr := peerTable[i].Front(); curr != nil; curr = curr.Next() {
+			entry := curr.Value.(*PeerEntry)
+			if bytes.Compare(entry.ID, bytesId) == 0 {
+				removeList = append(removeList, curr)
+			}
+		}
+
+		for _, element := range removeList {
+			peerTable[i].Remove(element)
+		}
+	}
 }
 
 func addPeer(peer *Peer) {

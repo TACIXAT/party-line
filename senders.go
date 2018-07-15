@@ -125,8 +125,6 @@ func sendSuggestions(peer *Peer, requestData []byte) {
 	}
 
 	peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
-
-	chatStatus(fmt.Sprintf("sent %d peers of size %d", len(peerSet), len(jsonEnv)))
 }
 
 func sendVerify(peer *Peer) {
@@ -249,4 +247,24 @@ func sendAnnounce(peer *Peer) {
 
 	peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
 	setStatus("announce sent")
+}
+
+func sendDisconnect() {
+	env := Envelope{
+		Type: "disconnect",
+		From: self.ID,
+		To:   ""}
+
+	disconnect := MessageDisconnect{
+		Time: time.Now()}
+
+	jsonDisconnect, err := json.Marshal(disconnect)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	env.Data = sign.Sign([]byte(jsonDisconnect), self.SignPrv)
+	flood(&env)
+	setStatus("disconnect sent")
 }

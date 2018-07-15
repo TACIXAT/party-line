@@ -270,3 +270,17 @@ func processSuggestions(env *Envelope) {
 		}
 	}
 }
+
+func processDisconnect(env *Envelope) {
+	// don't really care what their timestamp is
+	// just verify and remove
+
+	_, err := verifyEnvelope(env, "disconnect")
+	if err != nil {
+		setStatus(err.Error())
+		return
+	}
+
+	removePeer(env.From)
+	flood(env)
+}

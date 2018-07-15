@@ -152,6 +152,7 @@ func handleUserInput(buf string) {
 	toks := strings.Split(buf, " ")
 	switch toks[0] {
 	case "/quit":
+		sendDisconnect()
 		termui.StopLoop()
 	case "/bs":
 		handleBootstrap(toks)

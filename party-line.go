@@ -68,6 +68,10 @@ type MessageChat struct {
 	Time time.Time
 }
 
+type MessageDisconnect struct {
+	Time time.Time
+}
+
 var self Self
 var peerSelf Peer
 
