@@ -17,13 +17,15 @@ import (
 
 /*
 TODO:
+	connected message for peer that is bs'd to
+	empty message when all peers gone
 	pulse
-	disconnect
 	private message
 
 	private channel
 	advertise file
 	advertise shared file
+	some way to rebalance occasionally
 */
 
 type Self struct {

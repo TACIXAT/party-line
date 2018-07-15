@@ -26,6 +26,8 @@ func processMessage(strMsg string) {
 		processBootstrap(env)
 	case "chat":
 		processChat(env)
+	case "disconnect":
+		processDisconnect(env)
 	case "request":
 		processSuggestionRequest(env)
 	case "suggestions":
