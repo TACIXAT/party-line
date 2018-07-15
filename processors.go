@@ -73,7 +73,7 @@ func processChat(env *Envelope) {
 	_, seen := seenChats[uniqueID]
 	if !seen {
 		displayChat(env.From, chat)
-		forwardChat(env)
+		flood(env)
 		seenChats[uniqueID] = true
 	}
 }
@@ -172,7 +172,6 @@ func processAnnounce(env *Envelope) {
 
 		peer.Conn = peerConn
 		addPeer(peer)
-		seenPeers[peer.ID] = true
 
 		flood(env)
 	}
@@ -215,7 +214,6 @@ func processSuggestionRequest(env *Envelope) {
 	_, seen := seenPeers[peer.ID]
 	if !seen {
 		addPeer(peer)
-		seenPeers[peer.ID] = true
 	}
 }
 
@@ -255,7 +253,6 @@ func processSuggestions(env *Envelope) {
 
 		peer.Conn = peerConn
 		addPeer(peer)
-		seenPeers[peer.ID] = true
 	}
 
 	for _, newPeer := range suggestions.SuggestedPeers {

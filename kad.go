@@ -57,6 +57,8 @@ func calculateIdealTableSelf(idBytes []byte) {
 }
 
 func addPeer(peer *Peer) {
+	seenPeers[peer.ID] = true
+
 	idBytes := peer.SignPub
 	insertId := new(big.Int)
 	insertId.SetBytes(idBytes)

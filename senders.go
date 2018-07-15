@@ -42,33 +42,6 @@ func flood(env *Envelope) {
 	setStatus("flooded")
 }
 
-func forwardChat(env *Envelope) {
-	jsonEnv, err := json.Marshal(env)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	sendPeers := make(map[string]*Peer)
-	for _, list := range peerTable {
-		curr := list.Front()
-		currEntry := curr.Value.(*PeerEntry)
-		currPeer := currEntry.Entry
-
-		if currPeer == nil {
-			continue
-		}
-
-		sendPeers[currPeer.ID] = currPeer
-	}
-
-	for _, peer := range sendPeers {
-		peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
-	}
-
-	setStatus("chat fowarded")
-}
-
 func sendSuggestionRequest(peer *Peer) {
 	env := Envelope{
 		Type: "request",
