@@ -20,12 +20,14 @@ func processMessage(strMsg string) {
 	}
 
 	switch env.Type {
+	case "announce":
+		processAnnounce(env)
 	case "bootstrap":
 		processBootstrap(env)
-	case "verifybs":
-		processVerify(env)
 	case "chat":
 		processChat(env)
+	case "verifybs":
+		processVerify(env)
 	default:
 		chatStatus("unknown msg type: " + env.Type)
 	}
