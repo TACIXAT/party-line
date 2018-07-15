@@ -169,6 +169,7 @@ func main() {
 	initTable(self.SignPub)
 
 	seenChats = make(map[string]bool)
+	seenPeers = make(map[string]bool)
 	chatChan = make(chan string, 1)
 	statusChan = make(chan string, 1)
 	bsId := fmt.Sprintf("%s/%s/%s", extIP.String(), portStr, self.ID)
