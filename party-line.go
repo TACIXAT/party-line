@@ -24,8 +24,6 @@ TODO:
 	private channel
 	advertise file
 	advertise shared file
-
-	fix byte array that doesn't encode
 */
 
 type Self struct {
