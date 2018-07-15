@@ -136,11 +136,10 @@ func processBootstrap(env *Envelope) {
 	peer.SignPub = bs.SignPub
 	peer.Address = bs.Address
 
-	jsonPeer, err :=  json.Marshal(closestPeer)
+	jsonPeer, err := json.Marshal(peer)
 	if err != nil {
-		chatStatus(fmt.Sprintf("size of encoded peer: %d", len(jsonPeer))
+		chatStatus(fmt.Sprintf("size of encoded peer: %d", len(jsonPeer)))
 	}
-
 
 	if env.From != peer.ID {
 		setStatus("id does not match from (bs)")
@@ -156,9 +155,9 @@ func processBootstrap(env *Envelope) {
 
 	peer.Conn = peerConn
 
-	jsonPeer, err :=  json.Marshal(closestPeer)
+	jsonPeer, err = json.Marshal(peer)
 	if err != nil {
-		chatStatus(fmt.Sprintf("size of encoded peer w/ conn: %d", len(jsonPeer))
+		chatStatus(fmt.Sprintf("size of encoded peer w/ conn: %d", len(jsonPeer)))
 	}
 
 	sendVerify(peer)
@@ -216,8 +215,8 @@ func processVerify(env *Envelope) {
 	}
 
 	peer.Conn = peerConn
-	sendTable(peer)
 	addPeer(peer)
+	// add peers
 	setStatus("bs success")
 	chatStatus("happy chatting!")
 }

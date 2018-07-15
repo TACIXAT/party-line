@@ -25,22 +25,22 @@ func sendVerify(peer *Peer) {
 		SignPub: self.SignPub}
 
 	// calculate ideal for id
-	peerIdealTable := calculateIdealTable(peer.SignPub)
+	// peerIdealTable := calculateIdealTable(peer.SignPub)
 
-	// find closest for each and make a unique list
-	peerSetHelper := make(map[string]bool)
-	peerSet := make([]Peer, 0)
-	for _, idInt := range peerIdealTable {
-		closestPeerEntry := findClosest(idInt.Bytes())
-		if closestPeerEntry.Entry != nil {
-			closestPeer := closestPeerEntry.Entry
-			_, contains := peerSetHelper[closestPeer.ID]
-			if !contains {
-				peerSetHelper[closestPeer.ID] = true
-				peerSet := append(peerSet, *closestPeer)
-			}
-		}
-	}
+	// // find closest for each and make a unique list
+	// peerSetHelper := make(map[string]bool)
+	// peerSet := make([]Peer, 0)
+	// for _, idInt := range peerIdealTable {
+	// 	closestPeerEntry := findClosest(idInt.Bytes())
+	// 	if closestPeerEntry.Entry != nil {
+	// 		closestPeer := closestPeerEntry.Entry
+	// 		_, contains := peerSetHelper[closestPeer.ID]
+	// 		if !contains {
+	// 			peerSetHelper[closestPeer.ID] = true
+	// 			peerSet := append(peerSet, *closestPeer)
+	// 		}
+	// 	}
+	// }
 
 	// truncate
 
