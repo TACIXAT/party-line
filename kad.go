@@ -2,8 +2,6 @@ package main
 
 import (
 	"container/list"
-	// "encoding/hex"
-	// "fmt"
 	"github.com/kevinburke/nacl/sign"
 	"math/big"
 )
@@ -95,6 +93,25 @@ func addPeer(peer *Peer) {
 			}
 		}
 	}
+}
+
+func wouldAddPeer(peer *Peer) bool {
+	idBytes := peer.SignPub
+	insertId := new(big.Int)
+	insertId.SetBytes(idBytes)
+
+	for i := 0; i < 256; i++ {
+		insertDist := new(big.Int)
+		insertDist.Xor(idealPeerIds[i], insertId)
+
+		last := peerTable[i].Back()
+		lastPeerEntry := last.Value.(*PeerEntry)
+		if insertDist.Cmp(lastPeerEntry.Distance) < 0 {
+			return true
+		}
+	}
+
+	return false
 }
 
 func findClosest(idBytes []byte) *PeerEntry {

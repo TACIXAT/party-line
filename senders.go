@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/hex"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/kevinburke/nacl/sign"
@@ -70,20 +70,39 @@ func forwardChat(env *Envelope) {
 }
 
 func sendSuggestionRequest(peer *Peer) {
-	// env := Envelope{
-	// 	Type: "suggestionRequest",
-	// 	From: self.ID,
-	// 	To:   peer.ID,
-	// 	Data: ""}
+	env := Envelope{
+		Type: "request",
+		From: self.ID,
+		To:   peer.ID}
 
-	// jsonBs, err := json.Marshal(peerSelf)
-	// if err != nil {
-	// 	log.Println(err)
-	// 	return
-	// }
+	request := MessageSuggestionRequest{
+		Peer: peerSelf,
+		To:   peer.ID}
+
+	jsonReq, err := json.Marshal(request)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	env.Data = sign.Sign([]byte(jsonReq), self.SignPrv)
+
+	jsonEnv, err := json.Marshal(env)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
+	setStatus("suggestion request sent")
 }
 
-func sendSuggestions(peer *Peer) {
+func sendSuggestions(peer *Peer, requestData []byte) {
+	env := Envelope{
+		Type: "suggestions",
+		From: self.ID,
+		To:   peer.ID}
+
 	// calculate ideal for id
 	peerIdealTable := calculateIdealTable(peer.SignPub)
 
@@ -93,9 +112,11 @@ func sendSuggestions(peer *Peer) {
 	peerSet = append(peerSet)
 	for _, idInt := range peerIdealTable {
 		closestPeerEntry := findClosest(idInt.Bytes())
-		if closestPeerEntry.Entry != nil {
+		isRequestingPeer := bytes.Compare(peer.SignPub, closestPeerEntry.ID) == 0
+		if closestPeerEntry.Entry != nil && !isRequestingPeer {
 			closestPeer := closestPeerEntry.Entry
 			_, contains := peerSetHelper[closestPeer.ID]
+
 			if !contains {
 				peerSetHelper[closestPeer.ID] = true
 				peerSet = append(peerSet, *closestPeer)
@@ -111,15 +132,35 @@ func sendSuggestions(peer *Peer) {
 		peerSet = peerSet[:128]
 	}
 
-	chatStatus(fmt.Sprintf("sending %d peers", len(peerSet)))
+	suggestions := MessageSuggestions{
+		Peer:           peerSelf,
+		RequestData:    requestData,
+		SuggestedPeers: peerSet}
+
+	jsonSuggestions, err := json.Marshal(suggestions)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	env.Data = sign.Sign([]byte(jsonSuggestions), self.SignPrv)
+
+	jsonEnv, err := json.Marshal(env)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
+
+	chatStatus(fmt.Sprintf("sent %d peers of size %d", len(peerSet), len(jsonEnv)))
 }
 
 func sendVerify(peer *Peer) {
 	env := Envelope{
 		Type: "verifybs",
 		From: self.ID,
-		To:   peer.ID,
-		Data: ""}
+		To:   peer.ID}
 
 	jsonBs, err := json.Marshal(peerSelf)
 	if err != nil {
@@ -127,8 +168,7 @@ func sendVerify(peer *Peer) {
 		return
 	}
 
-	signed := sign.Sign([]byte(jsonBs), self.SignPrv)
-	env.Data = hex.EncodeToString(signed)
+	env.Data = sign.Sign([]byte(jsonBs), self.SignPrv)
 
 	jsonEnv, err := json.Marshal(env)
 	if err != nil {
@@ -144,8 +184,7 @@ func sendChat(msg string) {
 	env := Envelope{
 		Type: "chat",
 		From: self.ID,
-		To:   "",
-		Data: ""}
+		To:   ""}
 
 	chat := MessageChat{
 		Chat: msg,
@@ -175,8 +214,7 @@ func sendChat(msg string) {
 		return
 	}
 
-	signed := sign.Sign([]byte(jsonChat), self.SignPrv)
-	env.Data = hex.EncodeToString(signed)
+	env.Data = sign.Sign([]byte(jsonChat), self.SignPrv)
 	jsonEnv, err := json.Marshal(env)
 
 	for _, peer := range sendPeers {
@@ -190,8 +228,7 @@ func sendBootstrap(addr, peerId string) {
 	env := Envelope{
 		Type: "bootstrap",
 		From: self.ID,
-		To:   peerId,
-		Data: ""}
+		To:   peerId}
 
 	jsonBs, err := json.Marshal(peerSelf)
 	if err != nil {
@@ -199,8 +236,7 @@ func sendBootstrap(addr, peerId string) {
 		return
 	}
 
-	signed := sign.Sign([]byte(jsonBs), self.SignPrv)
-	env.Data = hex.EncodeToString(signed)
+	env.Data = sign.Sign([]byte(jsonBs), self.SignPrv)
 
 	jsonEnv, err := json.Marshal(env)
 	if err != nil {
@@ -222,8 +258,7 @@ func sendAnnounce(peer *Peer) {
 	env := Envelope{
 		Type: "announce",
 		From: self.ID,
-		To:   "",
-		Data: ""}
+		To:   ""}
 
 	jsonAnnounce, err := json.Marshal(peerSelf)
 	if err != nil {
@@ -231,8 +266,7 @@ func sendAnnounce(peer *Peer) {
 		return
 	}
 
-	signed := sign.Sign([]byte(jsonAnnounce), self.SignPrv)
-	env.Data = hex.EncodeToString(signed)
+	env.Data = sign.Sign([]byte(jsonAnnounce), self.SignPrv)
 
 	jsonEnv, err := json.Marshal(env)
 	if err != nil {

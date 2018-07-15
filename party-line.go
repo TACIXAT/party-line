@@ -2,26 +2,21 @@ package main
 
 import (
 	"bufio"
-	// "bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"flag"
+	"fmt"
 	"github.com/kevinburke/nacl"
 	"github.com/kevinburke/nacl/box"
 	"github.com/kevinburke/nacl/sign"
-	// "io"
 	"log"
 	"net"
 	"strconv"
-	// "sync"
-	"fmt"
 	"time"
 )
 
 /*
 TODO:
-	send table
-	announce
 	pulse
 	disconnect
 	private message
@@ -56,12 +51,18 @@ type Envelope struct {
 	Type string
 	From string
 	To   string
-	Data string
+	Data []byte
 }
 
-type MessageSuggested struct {
+type MessageSuggestions struct {
 	Peer           Peer
+	RequestData    []byte
 	SuggestedPeers []Peer
+}
+
+type MessageSuggestionRequest struct {
+	Peer Peer
+	To   string
 }
 
 type MessageChat struct {

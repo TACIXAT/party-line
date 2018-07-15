@@ -26,6 +26,10 @@ func processMessage(strMsg string) {
 		processBootstrap(env)
 	case "chat":
 		processChat(env)
+	case "request":
+		processSuggestionRequest(env)
+	case "suggestions":
+		processSuggestions(env)
 	case "verifybs":
 		processVerify(env)
 	default:
@@ -40,12 +44,7 @@ func verifyEnvelope(env *Envelope, caller string) ([]byte, error) {
 		return nil, errors.New(fmt.Sprintf("error decoding hex (%s:from)", caller))
 	}
 
-	data, err := hex.DecodeString(env.Data)
-	if err != nil {
-		log.Println(err)
-		return nil, errors.New(fmt.Sprintf("error decoding hex (%s:data)", caller))
-	}
-
+	data := env.Data
 	verified := sign.Verify(data, fromPub)
 	if !verified {
 		return nil, errors.New(fmt.Sprintf("questionable message integrity discarding (%s)", caller))
@@ -179,12 +178,98 @@ func processAnnounce(env *Envelope) {
 	}
 }
 
-// func processSuggestionRequest(env *Envelope) {
-// 	jsonData, err := verifyEnvelope(env, "suggestionreq")
-// 	if err != nil {
-// 		setStatus(err.Error())
-// 		return
-// 	}
+func processSuggestionRequest(env *Envelope) {
+	jsonData, err := verifyEnvelope(env, "request")
+	if err != nil {
+		setStatus(err.Error())
+		return
+	}
 
-// 	sendSuggestions(peer)
-// }
+	var request MessageSuggestionRequest
+	err = json.Unmarshal(jsonData, &request)
+	if err != nil {
+		log.Println(err)
+		setStatus("error invalid json (request)")
+		return
+	}
+
+	if request.To != self.ID {
+		setStatus("error invalid to (request)")
+		return
+	}
+
+	peer := new(Peer)
+	*peer = request.Peer
+
+	peerConn, err := net.Dial("udp", peer.Address)
+	if err != nil {
+		log.Println(err)
+		setStatus("could not connect to peer (request)")
+		return
+	}
+
+	peer.Conn = peerConn
+
+	sendSuggestions(peer, env.Data)
+
+	_, seen := seenPeers[peer.ID]
+	if !seen {
+		addPeer(peer)
+		seenPeers[peer.ID] = true
+	}
+}
+
+func processSuggestions(env *Envelope) {
+	jsonData, err := verifyEnvelope(env, "suggestions")
+	if err != nil {
+		setStatus(err.Error())
+		return
+	}
+
+	var suggestions MessageSuggestions
+	err = json.Unmarshal(jsonData, &suggestions)
+	if err != nil {
+		log.Println(err)
+		setStatus("error invalid json (suggestions)")
+		return
+	}
+
+	requestData := suggestions.RequestData
+	verified := sign.Verify(requestData, self.SignPub)
+	if !verified {
+		setStatus("error originating req not signed self (suggestions)")
+		return
+	}
+
+	peer := new(Peer)
+	*peer = suggestions.Peer
+
+	_, seen := seenPeers[peer.ID]
+	if !seen {
+		peerConn, err := net.Dial("udp", peer.Address)
+		if err != nil {
+			log.Println(err)
+			setStatus("could not connect to peer (suggestions)")
+			return
+		}
+
+		peer.Conn = peerConn
+		addPeer(peer)
+		seenPeers[peer.ID] = true
+	}
+
+	for _, newPeer := range suggestions.SuggestedPeers {
+		_, seen := seenPeers[newPeer.ID]
+		if !seen && wouldAddPeer(&newPeer) {
+			peerConn, err := net.Dial("udp", newPeer.Address)
+			if err != nil {
+				log.Println(err)
+				setStatus("could not connect to new peer (suggestions)")
+				continue
+			}
+
+			newPeer.Conn = peerConn
+			sendSuggestionRequest(&newPeer)
+		}
+	}
+}
