@@ -15,7 +15,7 @@ var idealPeerIds [256]*big.Int
 type PeerEntry struct {
 	ID       sign.PublicKey
 	Distance *big.Int
-	Entry    *Peer
+	Peer     *Peer
 }
 
 func initTable(idBytes []byte) {
@@ -29,7 +29,7 @@ func initTable(idBytes []byte) {
 		peerEntry := new(PeerEntry)
 		peerEntry.ID = idBytes
 		peerEntry.Distance = peerDist
-		peerEntry.Entry = nil
+		peerEntry.Peer = nil
 
 		peerTable[i] = list.New()
 		peerTable[i].PushFront(peerEntry)
@@ -98,7 +98,7 @@ func addPeer(peer *Peer) {
 			insertEntry := new(PeerEntry)
 			insertEntry.ID = idBytes
 			insertEntry.Distance = insertDist
-			insertEntry.Entry = peer
+			insertEntry.Peer = peer
 
 			curr := last
 			currPeerEntry := lastPeerEntry

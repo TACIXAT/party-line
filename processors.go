@@ -274,15 +274,59 @@ func processSuggestions(env *Envelope) {
 }
 
 func processDisconnect(env *Envelope) {
-	// don't really care what their timestamp is
-	// just verify and remove
-
-	_, err := verifyEnvelope(env, "disconnect")
+	jsonData, err := verifyEnvelope(env, "disconnect")
 	if err != nil {
 		setStatus(err.Error())
 		return
 	}
 
+	var messageTime MessageTime
+	err = json.Unmarshal(jsonData, &messageTime)
+	if err != nil {
+		log.Println(err)
+		setStatus("error invalid json (disconnect)")
+		return
+	}
+
+	if messageTime.MessageType != -1 {
+		setStatus("error invalid message type (disconnect)")
+		return
+	}
+
 	removePeer(env.From)
 	flood(env)
+}
+
+func processPing(env *Envelope) {
+	jsonData, err := verifyEnvelope(env, "ping")
+	if err != nil {
+		setStatus(err.Error())
+		return
+	}
+
+	var messagePing MessagePing
+	err = json.Unmarshal(jsonData, &messagePing)
+	if err != nil {
+		log.Println(err)
+		setStatus("error invalid json (ping)")
+		return
+	}
+
+	if messagePing.MessageType != 0 {
+		setStatus("error invalid message type (ping)")
+		return
+	}
+
+	peer := messagePing.From
+
+	peerConn, err := net.Dial("udp", peer.Address)
+	if err != nil {
+		log.Println(err)
+		setStatus("could not connect to peer (ping)")
+		return
+	}
+
+	peer.Conn = peerConn
+
+	sendPulse(&peer)
 }

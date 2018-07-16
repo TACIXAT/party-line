@@ -17,15 +17,15 @@ import (
 
 /*
 TODO:
-	connected message for peer that is bs'd to
-	empty message when all peers gone
 	pulse
 	private message
 
+	some way to rebalance occasionally
+	connected message for peer that is bs'd to
+	empty message when all peers gone
 	private channel
 	advertise file
 	advertise shared file
-	some way to rebalance occasionally
 */
 
 type Self struct {
@@ -70,8 +70,15 @@ type MessageChat struct {
 	Time time.Time
 }
 
-type MessageDisconnect struct {
-	Time time.Time
+type MessageTime struct {
+	MessageType int
+	Time        time.Time
+}
+
+type MessagePing struct {
+	MessageType int
+	Time        time.Time
+	From        Peer
 }
 
 var self Self

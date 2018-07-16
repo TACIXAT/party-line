@@ -21,7 +21,7 @@ func flood(env *Envelope) {
 	for _, list := range peerTable {
 		for curr := list.Front(); curr != nil; curr = curr.Next() {
 			currEntry := curr.Value.(*PeerEntry)
-			currPeer := currEntry.Entry
+			currPeer := currEntry.Peer
 
 			if currPeer == nil {
 				continue
@@ -86,8 +86,8 @@ func sendSuggestions(peer *Peer, requestData []byte) {
 	for _, idInt := range peerIdealTable {
 		closestPeerEntry := findClosest(idInt.Bytes())
 		isRequestingPeer := bytes.Compare(peer.SignPub, closestPeerEntry.ID) == 0
-		if closestPeerEntry.Entry != nil && !isRequestingPeer {
-			closestPeer := closestPeerEntry.Entry
+		if closestPeerEntry.Peer != nil && !isRequestingPeer {
+			closestPeer := closestPeerEntry.Peer
 			_, contains := peerSetHelper[closestPeer.ID]
 
 			if !contains {
@@ -171,7 +171,7 @@ func sendChat(msg string) {
 	for _, list := range peerTable {
 		curr := list.Front()
 		currEntry := curr.Value.(*PeerEntry)
-		currPeer := currEntry.Entry
+		currPeer := currEntry.Peer
 
 		if currPeer == nil {
 			continue
@@ -255,8 +255,9 @@ func sendDisconnect() {
 		From: self.ID,
 		To:   ""}
 
-	disconnect := MessageDisconnect{
-		Time: time.Now()}
+	disconnect := MessageTime{
+		MessageType: -1,
+		Time:        time.Now()}
 
 	jsonDisconnect, err := json.Marshal(disconnect)
 	if err != nil {
@@ -267,4 +268,73 @@ func sendDisconnect() {
 	env.Data = sign.Sign([]byte(jsonDisconnect), self.SignPrv)
 	flood(&env)
 	setStatus("disconnect sent")
+}
+
+func sendPings() {
+	time.Sleep(time.Second * 30)
+	env := Envelope{
+		Type: "ping",
+		From: self.ID,
+		To:   ""}
+
+	pulse := MessagePing{
+		MessageType: 0,
+		Time:        time.Now(),
+		From:        peerSelf}
+
+	jsonPulse, err := json.Marshal(pulse)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	env.Data = sign.Sign([]byte(jsonPulse), self.SignPrv)
+
+	jsonEnv, err := json.Marshal(env)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	peerSeen := make(map[string]bool)
+	for i := 0; i < 256; i++ {
+		bucketList := peerTable[i]
+		for curr := bucketList.Front(); curr != nil; curr = curr.Next() {
+			entry := curr.Value.(*PeerEntry)
+			if entry.Peer != nil {
+				_, seen := peerSeen[entry.Peer.ID]
+				if !seen {
+					entry.Peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
+					peerSeen[entry.Peer.ID] = true
+				}
+			}
+		}
+	}
+}
+
+func sendPulse(peer *Peer) {
+	env := Envelope{
+		Type: "pulse",
+		From: self.ID,
+		To:   ""}
+
+	pulse := MessageTime{
+		MessageType: 1,
+		Time:        time.Now()}
+
+	jsonPulse, err := json.Marshal(pulse)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	env.Data = sign.Sign([]byte(jsonPulse), self.SignPrv)
+
+	jsonEnv, err := json.Marshal(env)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
 }
