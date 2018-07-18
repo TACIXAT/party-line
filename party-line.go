@@ -19,9 +19,6 @@ import (
 TODO:
 	private message
 
-	some way to rebalance occasionally
-	connected message for peer that is bs'd to
-	empty message when all peers gone
 	private channel
 	advertise file
 	advertise shared file
@@ -31,9 +28,9 @@ type Self struct {
 	ID      string
 	Handle  string
 	EncPub  nacl.Key
-	EncPrv  nacl.Key
+	EncPrv  nacl.Key `json:"-"`
 	SignPub sign.PublicKey
-	SignPrv sign.PrivateKey
+	SignPrv sign.PrivateKey `json:"-"`
 	Address string
 }
 

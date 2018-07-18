@@ -12,6 +12,7 @@ import (
 
 var peerTable [256]*list.List
 var idealPeerIds [256]*big.Int
+var emptyList bool = true
 
 type PeerEntry struct {
 	ID       sign.PublicKey
@@ -82,9 +83,15 @@ func removePeer(peerId string) {
 			peerTable[i].Remove(element)
 		}
 	}
+
+	if !havePeers() {
+		chatStatus("all friends gone, bootstrap some new ones")
+		emptyList = true
+	}
 }
 
 func removeStalePeers() {
+	removed := false
 	for i := 0; i < 256; i++ {
 		removeList := make([]*list.Element, 0)
 		for curr := peerTable[i].Front(); curr != nil; curr = curr.Next() {
@@ -97,8 +104,32 @@ func removeStalePeers() {
 		for _, element := range removeList {
 			setStatus("removed stale peer")
 			peerTable[i].Remove(element)
+			removed = true
 		}
 	}
+
+	if removed && !havePeers() {
+		chatStatus("all friends gone, bootstrap some new ones")
+		emptyList = true
+	}
+}
+
+func havePeers() bool {
+	for i := 0; i < 256; i++ {
+		if peerTable[i].Len() > 1 {
+			return true
+		}
+
+		element := peerTable[i].Front()
+		if element != nil {
+			entry := element.Value.(*PeerEntry)
+			if entry.Peer != nil {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func addPeer(peer *Peer) {
@@ -140,6 +171,11 @@ func addPeer(peer *Peer) {
 				peerTable[i].Remove(last)
 			}
 		}
+	}
+
+	if emptyList {
+		chatStatus("peer added, happy chatting!")
+		emptyList = false
 	}
 }
 

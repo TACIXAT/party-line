@@ -149,7 +149,6 @@ func processVerify(env *Envelope) {
 	setStatus("verified")
 	sendAnnounce(peer)
 	sendSuggestionRequest(peer)
-	chatStatus("happy chatting!")
 }
 
 func processAnnounce(env *Envelope) {
