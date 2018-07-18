@@ -32,6 +32,10 @@ func processMessage(strMsg string) {
 		processSuggestionRequest(env)
 	case "suggestions":
 		processSuggestions(env)
+	case "ping":
+		processPing(env)
+	case "pulse":
+		processPulse(env)
 	case "verifybs":
 		processVerify(env)
 	default:
@@ -329,4 +333,27 @@ func processPing(env *Envelope) {
 	peer.Conn = peerConn
 
 	sendPulse(&peer)
+}
+
+func processPulse(env *Envelope) {
+	jsonData, err := verifyEnvelope(env, "pulse")
+	if err != nil {
+		setStatus(err.Error())
+		return
+	}
+
+	var messageTime MessageTime
+	err = json.Unmarshal(jsonData, &messageTime)
+	if err != nil {
+		log.Println(err)
+		setStatus("error invalid json (pulse)")
+		return
+	}
+
+	if messageTime.MessageType != 1 {
+		setStatus("error invalid message type (pulse)")
+		return
+	}
+
+	refreshPeer(env.From)
 }

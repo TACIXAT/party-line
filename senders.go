@@ -271,41 +271,44 @@ func sendDisconnect() {
 }
 
 func sendPings() {
-	time.Sleep(time.Second * 30)
-	env := Envelope{
-		Type: "ping",
-		From: self.ID,
-		To:   ""}
+	for {
+		time.Sleep(time.Second * 30)
+		removeStalePeers()
+		env := Envelope{
+			Type: "ping",
+			From: self.ID,
+			To:   ""}
 
-	pulse := MessagePing{
-		MessageType: 0,
-		Time:        time.Now(),
-		From:        peerSelf}
+		ping := MessagePing{
+			MessageType: 0,
+			Time:        time.Now(),
+			From:        peerSelf}
 
-	jsonPulse, err := json.Marshal(pulse)
-	if err != nil {
-		log.Println(err)
-		return
-	}
+		jsonPing, err := json.Marshal(ping)
+		if err != nil {
+			log.Println(err)
+			return
+		}
 
-	env.Data = sign.Sign([]byte(jsonPulse), self.SignPrv)
+		env.Data = sign.Sign([]byte(jsonPing), self.SignPrv)
 
-	jsonEnv, err := json.Marshal(env)
-	if err != nil {
-		log.Println(err)
-		return
-	}
+		jsonEnv, err := json.Marshal(env)
+		if err != nil {
+			log.Println(err)
+			return
+		}
 
-	peerSeen := make(map[string]bool)
-	for i := 0; i < 256; i++ {
-		bucketList := peerTable[i]
-		for curr := bucketList.Front(); curr != nil; curr = curr.Next() {
-			entry := curr.Value.(*PeerEntry)
-			if entry.Peer != nil {
-				_, seen := peerSeen[entry.Peer.ID]
-				if !seen {
-					entry.Peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
-					peerSeen[entry.Peer.ID] = true
+		peerSeen := make(map[string]bool)
+		for i := 0; i < 256; i++ {
+			bucketList := peerTable[i]
+			for curr := bucketList.Front(); curr != nil; curr = curr.Next() {
+				entry := curr.Value.(*PeerEntry)
+				if entry.Peer != nil {
+					_, seen := peerSeen[entry.Peer.ID]
+					if !seen {
+						entry.Peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
+						peerSeen[entry.Peer.ID] = true
+					}
 				}
 			}
 		}

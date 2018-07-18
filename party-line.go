@@ -17,7 +17,6 @@ import (
 
 /*
 TODO:
-	pulse
 	private message
 
 	some way to rebalance occasionally
@@ -193,6 +192,7 @@ func main() {
 
 	// start network receiver
 	go recv("", port)
+	go sendPings()
 
 	userInterface()
 }

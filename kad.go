@@ -7,6 +7,7 @@ import (
 	"github.com/kevinburke/nacl/sign"
 	"log"
 	"math/big"
+	"time"
 )
 
 var peerTable [256]*list.List
@@ -16,6 +17,7 @@ type PeerEntry struct {
 	ID       sign.PublicKey
 	Distance *big.Int
 	Peer     *Peer
+	Seen     time.Time
 }
 
 func initTable(idBytes []byte) {
@@ -30,6 +32,7 @@ func initTable(idBytes []byte) {
 		peerEntry.ID = idBytes
 		peerEntry.Distance = peerDist
 		peerEntry.Peer = nil
+		peerEntry.Seen = time.Now()
 
 		peerTable[i] = list.New()
 		peerTable[i].PushFront(peerEntry)
@@ -81,6 +84,23 @@ func removePeer(peerId string) {
 	}
 }
 
+func removeStalePeers() {
+	for i := 0; i < 256; i++ {
+		removeList := make([]*list.Element, 0)
+		for curr := peerTable[i].Front(); curr != nil; curr = curr.Next() {
+			entry := curr.Value.(*PeerEntry)
+			if entry.Peer != nil && time.Now().Sub(entry.Seen) > 60*time.Second {
+				removeList = append(removeList, curr)
+			}
+		}
+
+		for _, element := range removeList {
+			setStatus("removed stale peer")
+			peerTable[i].Remove(element)
+		}
+	}
+}
+
 func addPeer(peer *Peer) {
 	seenPeers[peer.ID] = true
 
@@ -99,6 +119,7 @@ func addPeer(peer *Peer) {
 			insertEntry.ID = idBytes
 			insertEntry.Distance = insertDist
 			insertEntry.Peer = peer
+			insertEntry.Seen = time.Now()
 
 			curr := last
 			currPeerEntry := lastPeerEntry
@@ -182,4 +203,21 @@ func findClosest(idBytes []byte) *PeerEntry {
 	}
 
 	return closestElement.Value.(*PeerEntry)
+}
+
+func refreshPeer(peerId string) {
+	bytesId, err := hex.DecodeString(peerId)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	for i := 0; i < 256; i++ {
+		for curr := peerTable[i].Front(); curr != nil; curr = curr.Next() {
+			entry := curr.Value.(*PeerEntry)
+			if bytes.Compare(entry.ID, bytesId) == 0 {
+				entry.Seen = time.Now()
+			}
+		}
+	}
 }
