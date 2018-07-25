@@ -69,8 +69,12 @@ func formatChats() string {
 }
 
 func handleBootstrap(toks []string) {
+	if len(toks) == 1 {
+		chatStatus(bsId)
+		return
+	}
+
 	if len(toks) != 2 {
-		// TODO: show error
 		setStatus("error processing bootstrap command")
 		return
 	}
@@ -144,6 +148,10 @@ func chatDrawer(messageBox *termui.Par) {
 	}
 }
 
+func handleHelp() {
+	return
+}
+
 func handleUserInput(buf string) {
 	if len(buf) == 0 {
 		return
@@ -156,6 +164,8 @@ func handleUserInput(buf string) {
 		termui.StopLoop()
 	case "/bs":
 		handleBootstrap(toks)
+	case "/help":
+		handleHelp()
 	default:
 		handleChat(buf)
 	}

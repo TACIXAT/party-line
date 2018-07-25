@@ -12,6 +12,7 @@ import (
 
 var peerTable [256]*list.List
 var idealPeerIds [256]*big.Int
+var peerCache map[string]MinPeer
 var emptyList bool = true
 
 type PeerEntry struct {
@@ -19,6 +20,10 @@ type PeerEntry struct {
 	Distance *big.Int
 	Peer     *Peer
 	Seen     time.Time
+}
+
+func init() {
+	peerCache = make(map[string]MinPeer)
 }
 
 func initTable(idBytes []byte) {
@@ -132,8 +137,12 @@ func havePeers() bool {
 	return false
 }
 
+func cacheMin(min MinPeer) {
+	peerCache[min.ID()] = min
+}
+
 func addPeer(peer *Peer) {
-	seenPeers[peer.ID] = true
+	peerCache[peer.ID()] = peer.Min()
 
 	idBytes := peer.SignPub
 	insertId := new(big.Int)
@@ -239,6 +248,10 @@ func findClosest(idBytes []byte) *PeerEntry {
 	}
 
 	return closestElement.Value.(*PeerEntry)
+}
+
+func route(msg []byte) {
+
 }
 
 func refreshPeer(peerId string) {

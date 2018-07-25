@@ -82,6 +82,8 @@ func processChat(env *Envelope) {
 		flood(env)
 		seenChats[uniqueID] = true
 	}
+
+	cacheMin(chat.Min)
 }
 
 func processBootstrap(env *Envelope) {
@@ -99,7 +101,7 @@ func processBootstrap(env *Envelope) {
 		return
 	}
 
-	if env.From != peer.ID {
+	if env.From != peer.ID() {
 		setStatus("id does not match from (bs)")
 		return
 	}
@@ -132,7 +134,7 @@ func processVerify(env *Envelope) {
 		return
 	}
 
-	if env.From != peer.ID {
+	if env.From != peer.ID() {
 		setStatus("id does not match from (bsverify)")
 		return
 	}
@@ -166,7 +168,7 @@ func processAnnounce(env *Envelope) {
 		return
 	}
 
-	_, seen := seenPeers[peer.ID]
+	_, seen := peerCache[peer.ID()]
 	if !seen {
 		peerConn, err := net.Dial("udp", peer.Address)
 		if err != nil {
@@ -216,7 +218,7 @@ func processSuggestionRequest(env *Envelope) {
 
 	sendSuggestions(peer, env.Data)
 
-	_, seen := seenPeers[peer.ID]
+	_, seen := peerCache[peer.ID()]
 	if !seen {
 		addPeer(peer)
 	}
@@ -247,7 +249,7 @@ func processSuggestions(env *Envelope) {
 	peer := new(Peer)
 	*peer = suggestions.Peer
 
-	_, seen := seenPeers[peer.ID]
+	_, seen := peerCache[peer.ID()]
 	if !seen {
 		peerConn, err := net.Dial("udp", peer.Address)
 		if err != nil {
@@ -261,7 +263,7 @@ func processSuggestions(env *Envelope) {
 	}
 
 	for _, newPeer := range suggestions.SuggestedPeers {
-		_, seen := seenPeers[newPeer.ID]
+		_, seen := peerCache[newPeer.ID()]
 		if !seen && wouldAddPeer(&newPeer) {
 			peerConn, err := net.Dial("udp", newPeer.Address)
 			if err != nil {
@@ -320,18 +322,8 @@ func processPing(env *Envelope) {
 		return
 	}
 
-	peer := messagePing.From
-
-	peerConn, err := net.Dial("udp", peer.Address)
-	if err != nil {
-		log.Println(err)
-		setStatus("could not connect to peer (ping)")
-		return
-	}
-
-	peer.Conn = peerConn
-
-	sendPulse(&peer)
+	min := messagePing.Min
+	sendPulse(min)
 }
 
 func processPulse(env *Envelope) {

@@ -17,7 +17,7 @@ import (
 
 /*
 TODO:
-	private message
+	id length
 
 	private channel
 	advertise file
@@ -26,7 +26,6 @@ TODO:
 
 type Self struct {
 	ID      string
-	Handle  string
 	EncPub  nacl.Key
 	EncPrv  nacl.Key `json:"-"`
 	SignPub sign.PublicKey
@@ -35,12 +34,30 @@ type Self struct {
 }
 
 type Peer struct {
-	ID      string
-	Handle  string
 	EncPub  nacl.Key
 	SignPub sign.PublicKey
 	Address string
 	Conn    net.Conn `json:"-"`
+}
+
+func (peer *Peer) ID() string {
+	return hex.EncodeToString(peer.SignPub[:])
+}
+
+func (peer *Peer) Min() MinPeer {
+	var min MinPeer
+	min.EncPub = peer.EncPub
+	min.SignPub = peer.SignPub
+	return min
+}
+
+type MinPeer struct {
+	EncPub  nacl.Key
+	SignPub sign.PublicKey
+}
+
+func (min *MinPeer) ID() string {
+	return hex.EncodeToString(min.SignPub[:])
 }
 
 type Envelope struct {
@@ -62,6 +79,7 @@ type MessageSuggestionRequest struct {
 }
 
 type MessageChat struct {
+	Min  MinPeer
 	Chat string
 	Time time.Time
 }
@@ -72,16 +90,16 @@ type MessageTime struct {
 }
 
 type MessagePing struct {
+	Min         MinPeer
 	MessageType int
 	Time        time.Time
-	From        Peer
 }
 
 var self Self
 var peerSelf Peer
+var bsId string
 
 var seenChats map[string]bool
-var seenPeers map[string]bool
 var chatChan chan string
 var statusChan chan string
 
@@ -98,15 +116,12 @@ func getKeys() {
 	}
 
 	self.ID = hex.EncodeToString(signPub[:])
-	self.Handle = *handleFlag
 	self.SignPub = signPub
 	self.SignPrv = signPrv
 	self.EncPub = encPub
 	self.EncPrv = encPrv
 	log.Println(self.ID)
 
-	peerSelf.ID = self.ID
-	peerSelf.Handle = self.Handle
 	peerSelf.SignPub = self.SignPub
 	peerSelf.EncPub = self.EncPub
 	peerSelf.Address = self.Address
@@ -140,14 +155,12 @@ func recv(address string, port uint16) {
 
 var debugFlag *bool
 var portFlag *uint
-var handleFlag *string
 var ipFlag *string
 var nonatFlag *bool
 
 func main() {
 	debugFlag = flag.Bool("debug", false, "Debug.")
 	portFlag = flag.Uint("port", 3499, "Port.")
-	handleFlag = flag.String("handle", "anon", "Handle.")
 	ipFlag = flag.String("ip", "", "Manually set external IP.")
 	nonatFlag = flag.Bool("nonat", false, "Disable UPNP and PMP.")
 	flag.Parse()
@@ -177,10 +190,9 @@ func main() {
 	initTable(self.SignPub)
 
 	seenChats = make(map[string]bool)
-	seenPeers = make(map[string]bool)
 	chatChan = make(chan string, 1)
 	statusChan = make(chan string, 1)
-	bsId := fmt.Sprintf("%s/%s/%s", extIP.String(), portStr, self.ID)
+	bsId = fmt.Sprintf("%s/%s/%s", extIP.String(), portStr, self.ID)
 	log.Println(bsId)
 	chatStatus(bsId)
 
