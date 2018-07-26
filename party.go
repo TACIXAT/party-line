@@ -34,7 +34,7 @@ type PartyAnnounce struct {
 func (party *PartyLine) SendInvite(min MinPeer) {
 	env := Envelope{
 		Type: "invite",
-		From: self.ID,
+		From: peerSelf.ID(),
 		To:   min.ID()}
 
 	jsonInvite, err := json.Marshal(party)
@@ -99,7 +99,7 @@ func (party *PartyLine) ForwardAnnounce(signedPartyAnnounce []byte) {
 func (party *PartyLine) SendAnnounce() {
 	env := Envelope{
 		Type: "party",
-		From: self.ID,
+		From: peerSelf.ID(),
 		To:   ""}
 
 	partyEnv := PartyEnvelope{

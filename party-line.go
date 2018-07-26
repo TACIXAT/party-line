@@ -19,8 +19,6 @@ import (
 
 /*
 TODO:
-	id length
-
 	private channel
 	advertise file
 	advertise shared file
@@ -43,6 +41,12 @@ type Peer struct {
 }
 
 func (peer *Peer) ID() string {
+	signStr := hex.EncodeToString(peer.SignPub[:])
+	encStr := hex.EncodeToString(peer.EncPub[:])
+	return signStr + "." + encStr
+}
+
+func (peer *Peer) ShortID() string {
 	signStr := hex.EncodeToString(peer.SignPub[:])
 	encStr := hex.EncodeToString(peer.EncPub[:])
 	return signStr + "." + encStr
@@ -169,6 +173,9 @@ func getKeys() {
 		log.Fatal(err)
 	}
 
+	// TODO: ID should be longer
+	// fixup bootstrap to use only sign
+	// send full id on verify
 	self.ID = hex.EncodeToString(signPub[:])
 	self.SignPub = signPub
 	self.SignPrv = signPrv
@@ -246,7 +253,7 @@ func main() {
 	seenChats = make(map[string]bool)
 	chatChan = make(chan string, 1)
 	statusChan = make(chan string, 1)
-	bsId = fmt.Sprintf("%s/%s/%s", extIP.String(), portStr, self.ID)
+	bsId = fmt.Sprintf("%s/%s/%s", extIP.String(), portStr, peerSelf.ShortID())
 	log.Println(bsId)
 	chatStatus(bsId)
 
