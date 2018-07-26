@@ -25,7 +25,6 @@ TODO:
 */
 
 type Self struct {
-	ID      string
 	EncPub  nacl.Key
 	EncPrv  nacl.Key `json:"-"`
 	SignPub sign.PublicKey
@@ -48,8 +47,7 @@ func (peer *Peer) ID() string {
 
 func (peer *Peer) ShortID() string {
 	signStr := hex.EncodeToString(peer.SignPub[:])
-	encStr := hex.EncodeToString(peer.EncPub[:])
-	return signStr + "." + encStr
+	return signStr
 }
 
 func (peer *Peer) Min() MinPeer {
@@ -176,16 +174,15 @@ func getKeys() {
 	// TODO: ID should be longer
 	// fixup bootstrap to use only sign
 	// send full id on verify
-	self.ID = hex.EncodeToString(signPub[:])
 	self.SignPub = signPub
 	self.SignPrv = signPrv
 	self.EncPub = encPub
 	self.EncPrv = encPrv
-	log.Println(self.ID)
 
 	peerSelf.SignPub = self.SignPub
 	peerSelf.EncPub = self.EncPub
 	peerSelf.Address = self.Address
+	log.Println(peerSelf.ID())
 }
 
 func recv(address string, port uint16) {

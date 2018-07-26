@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -44,14 +43,14 @@ func processMessage(strMsg string) {
 }
 
 func verifyEnvelope(env *Envelope, caller string) ([]byte, error) {
-	fromPub, err := hex.DecodeString(env.From)
+	min, err := idToMin(env.From)
 	if err != nil {
 		log.Println(err)
-		return nil, errors.New(fmt.Sprintf("error decoding hex (%s:from)", caller))
+		return nil, errors.New(fmt.Sprintf("error bad id (%s:from)", caller))
 	}
 
 	data := env.Data
-	verified := sign.Verify(data, fromPub)
+	verified := sign.Verify(data, min.SignPub)
 	if !verified {
 		return nil, errors.New(fmt.Sprintf("questionable message integrity discarding (%s)", caller))
 	}
@@ -199,7 +198,7 @@ func processSuggestionRequest(env *Envelope) {
 		return
 	}
 
-	if request.To != self.ID {
+	if request.To != peerSelf.ID() {
 		setStatus("error invalid to (request)")
 		return
 	}
@@ -298,7 +297,13 @@ func processDisconnect(env *Envelope) {
 		return
 	}
 
-	removePeer(env.From)
+	idShort, err := idFront(env.From)
+	if err != nil {
+		setStatus("error bad id (disconnect)")
+		return
+	}
+
+	removePeer(idShort)
 	flood(env)
 }
 
@@ -346,5 +351,11 @@ func processPulse(env *Envelope) {
 		return
 	}
 
-	refreshPeer(env.From)
+	idShort, err := idFront(env.From)
+	if err != nil {
+		setStatus("error bad id (disconnect)")
+		return
+	}
+
+	refreshPeer(idShort)
 }

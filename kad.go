@@ -138,7 +138,7 @@ func havePeers() bool {
 }
 
 func cacheMin(min MinPeer) {
-	peerCache[min.ID()] = true
+	peerCache[min.ID()] = false
 }
 
 func addPeer(peer *Peer) {

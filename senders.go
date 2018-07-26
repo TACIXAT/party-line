@@ -45,7 +45,7 @@ func flood(env *Envelope) {
 func sendSuggestionRequest(peer *Peer) {
 	env := Envelope{
 		Type: "request",
-		From: self.ID,
+		From: peerSelf.ID(),
 		To:   peer.ID()}
 
 	request := MessageSuggestionRequest{
@@ -73,7 +73,7 @@ func sendSuggestionRequest(peer *Peer) {
 func sendSuggestions(peer *Peer, requestData []byte) {
 	env := Envelope{
 		Type: "suggestions",
-		From: self.ID,
+		From: peerSelf.ID(),
 		To:   peer.ID()}
 
 	// calculate ideal for id
@@ -127,10 +127,40 @@ func sendSuggestions(peer *Peer, requestData []byte) {
 	peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
 }
 
+func sendBootstrap(addr, peerId string) {
+	env := Envelope{
+		Type: "bootstrap",
+		From: peerSelf.ID(),
+		To:   peerId}
+
+	jsonBs, err := json.Marshal(peerSelf)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	env.Data = sign.Sign([]byte(jsonBs), self.SignPrv)
+
+	jsonEnv, err := json.Marshal(env)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	conn, err := net.Dial("udp", addr)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
+	setStatus("bs sent")
+}
+
 func sendVerify(peer *Peer) {
 	env := Envelope{
 		Type: "verifybs",
-		From: self.ID,
+		From: peerSelf.ID(),
 		To:   peer.ID()}
 
 	jsonBs, err := json.Marshal(peerSelf)
@@ -154,12 +184,13 @@ func sendVerify(peer *Peer) {
 func sendChat(msg string) {
 	env := Envelope{
 		Type: "chat",
-		From: self.ID,
+		From: peerSelf.ID(),
 		To:   ""}
 
 	chat := MessageChat{
 		Chat: msg,
-		Time: time.Now()}
+		Time: time.Now(),
+		Min:  peerSelf.Min()}
 
 	jsonChat, err := json.Marshal(chat)
 	if err != nil {
@@ -195,40 +226,10 @@ func sendChat(msg string) {
 	setStatus("chat sent")
 }
 
-func sendBootstrap(addr, peerId string) {
-	env := Envelope{
-		Type: "bootstrap",
-		From: self.ID,
-		To:   peerId}
-
-	jsonBs, err := json.Marshal(peerSelf)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	env.Data = sign.Sign([]byte(jsonBs), self.SignPrv)
-
-	jsonEnv, err := json.Marshal(env)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	conn, err := net.Dial("udp", addr)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
-	setStatus("bs sent")
-}
-
 func sendAnnounce(peer *Peer) {
 	env := Envelope{
 		Type: "announce",
-		From: self.ID,
+		From: peerSelf.ID(),
 		To:   ""}
 
 	jsonAnnounce, err := json.Marshal(peerSelf)
@@ -252,7 +253,7 @@ func sendAnnounce(peer *Peer) {
 func sendDisconnect() {
 	env := Envelope{
 		Type: "disconnect",
-		From: self.ID,
+		From: peerSelf.ID(),
 		To:   ""}
 
 	disconnect := MessageTime{
@@ -276,7 +277,7 @@ func sendPings() {
 		removeStalePeers()
 		env := Envelope{
 			Type: "ping",
-			From: self.ID,
+			From: peerSelf.ID(),
 			To:   ""}
 
 		ping := MessagePing{
@@ -318,7 +319,7 @@ func sendPings() {
 func sendPulse(min MinPeer) {
 	env := Envelope{
 		Type: "pulse",
-		From: self.ID,
+		From: peerSelf.ID(),
 		To:   ""}
 
 	pulse := MessageTime{
