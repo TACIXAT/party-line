@@ -12,7 +12,7 @@ import (
 
 var peerTable [256]*list.List
 var idealPeerIds [256]*big.Int
-var peerCache map[string]MinPeer
+var peerCache map[string]bool
 var emptyList bool = true
 
 type PeerEntry struct {
@@ -23,7 +23,7 @@ type PeerEntry struct {
 }
 
 func init() {
-	peerCache = make(map[string]MinPeer)
+	peerCache = make(map[string]bool)
 }
 
 func initTable(idBytes []byte) {
@@ -138,11 +138,11 @@ func havePeers() bool {
 }
 
 func cacheMin(min MinPeer) {
-	peerCache[min.ID()] = min
+	peerCache[min.ID()] = true
 }
 
 func addPeer(peer *Peer) {
-	peerCache[peer.ID()] = peer.Min()
+	peerCache[peer.ID()] = true
 
 	idBytes := peer.SignPub
 	insertId := new(big.Int)

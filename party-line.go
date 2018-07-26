@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/kevinburke/nacl"
@@ -12,6 +13,7 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -41,7 +43,9 @@ type Peer struct {
 }
 
 func (peer *Peer) ID() string {
-	return hex.EncodeToString(peer.SignPub[:])
+	signStr := hex.EncodeToString(peer.SignPub[:])
+	encStr := hex.EncodeToString(peer.EncPub[:])
+	return signStr + "." + encStr
 }
 
 func (peer *Peer) Min() MinPeer {
@@ -57,7 +61,9 @@ type MinPeer struct {
 }
 
 func (min *MinPeer) ID() string {
-	return hex.EncodeToString(min.SignPub[:])
+	signStr := hex.EncodeToString(min.SignPub[:])
+	encStr := hex.EncodeToString(min.EncPub[:])
+	return signStr + "." + encStr
 }
 
 type Envelope struct {
@@ -102,6 +108,54 @@ var bsId string
 var seenChats map[string]bool
 var chatChan chan string
 var statusChan chan string
+
+func idFront(id string) (string, error) {
+	min, err := idToMin(id)
+	if err != nil {
+		setStatus(err.Error())
+		return "", err
+	}
+
+	return hex.EncodeToString(min.SignPub[:]), nil
+}
+
+func idBack(id string) (string, error) {
+	min, err := idToMin(id)
+	if err != nil {
+		setStatus(err.Error())
+		return "", err
+	}
+
+	return hex.EncodeToString(min.EncPub[:]), nil
+}
+
+func idToMin(id string) (*MinPeer, error) {
+	pubs := strings.Split(id, ".")
+	if len(pubs) != 2 {
+		return nil, errors.New("error invalid id (min)")
+	}
+
+	signHex := pubs[0]
+	signBytes, err := hex.DecodeString(signHex)
+	if err != nil {
+		return nil, errors.New("error invalid id (min)")
+	}
+
+	encHex := pubs[1]
+	encBytes, err := hex.DecodeString(encHex)
+	if err != nil {
+		return nil, errors.New("error invalid id (min)")
+	}
+
+	min := new(MinPeer)
+	min.SignPub = sign.PublicKey(signBytes)
+
+	var encFixed [nacl.KeySize]byte
+	copy(encFixed[:], encBytes[:nacl.KeySize])
+	min.EncPub = nacl.Key(&encFixed)
+
+	return min, nil
+}
 
 func getKeys() {
 	r := rand.Reader
