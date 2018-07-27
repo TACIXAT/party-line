@@ -171,9 +171,6 @@ func getKeys() {
 		log.Fatal(err)
 	}
 
-	// TODO: ID should be longer
-	// fixup bootstrap to use only sign
-	// send full id on verify
 	self.SignPub = signPub
 	self.SignPrv = signPrv
 	self.EncPub = encPub

@@ -167,8 +167,12 @@ func processAnnounce(env *Envelope) {
 		return
 	}
 
-	_, seen := peerCache[peer.ID()]
-	if !seen {
+	if peer.ID() == peerSelf.ID() {
+		return
+	}
+
+	cache, seen := peerCache[peer.ID()]
+	if !seen || !cache.Added {
 		peerConn, err := net.Dial("udp", peer.Address)
 		if err != nil {
 			log.Println(err)
@@ -178,8 +182,13 @@ func processAnnounce(env *Envelope) {
 
 		peer.Conn = peerConn
 		addPeer(peer)
+	}
 
+	if !seen || !cache.Announced {
 		flood(env)
+		cache = peerCache[peer.ID()]
+		cache.Announced = true
+		peerCache[peer.ID()] = cache
 	}
 }
 
@@ -217,8 +226,8 @@ func processSuggestionRequest(env *Envelope) {
 
 	sendSuggestions(peer, env.Data)
 
-	_, seen := peerCache[peer.ID()]
-	if !seen {
+	cache, seen := peerCache[peer.ID()]
+	if !seen || !cache.Added {
 		addPeer(peer)
 	}
 }
@@ -248,8 +257,8 @@ func processSuggestions(env *Envelope) {
 	peer := new(Peer)
 	*peer = suggestions.Peer
 
-	_, seen := peerCache[peer.ID()]
-	if !seen {
+	cache, seen := peerCache[peer.ID()]
+	if !seen || !cache.Added {
 		peerConn, err := net.Dial("udp", peer.Address)
 		if err != nil {
 			log.Println(err)
@@ -262,8 +271,8 @@ func processSuggestions(env *Envelope) {
 	}
 
 	for _, newPeer := range suggestions.SuggestedPeers {
-		_, seen := peerCache[newPeer.ID()]
-		if !seen && wouldAddPeer(&newPeer) {
+		cache, seen := peerCache[newPeer.ID()]
+		if !seen && !cache.Added && wouldAddPeer(&newPeer) {
 			peerConn, err := net.Dial("udp", newPeer.Address)
 			if err != nil {
 				log.Println(err)
@@ -304,7 +313,14 @@ func processDisconnect(env *Envelope) {
 	}
 
 	removePeer(idShort)
-	flood(env)
+
+	cache, seen := peerCache[env.From]
+	if !seen || !cache.Disconnected {
+		cache.Disconnected = true
+		peerCache[env.From] = cache
+
+		flood(env)
+	}
 }
 
 func processPing(env *Envelope) {

@@ -2,19 +2,67 @@ package main
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/kevinburke/nacl/sign"
 	"log"
+	"math/big"
 	"net"
 	"time"
 )
 
-func route(msg []byte) {
-	// to
-	// find nearest N ???
-	// findClosestN()
-	// send to N
+func route(env *Envelope) {
+	jsonEnv, err := json.Marshal(env)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	idShortString, err := idFront(env.To)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	idShortBytes, err := hex.DecodeString(idShortString)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	shortId, err := idFront(env.To)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	bytesId, err := hex.DecodeString(shortId)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	idInt := new(big.Int)
+	idInt.SetBytes(bytesId)
+
+	selfDist := new(big.Int)
+	selfDist.SetBytes(peerSelf.SignPub)
+	selfDist.Xor(selfDist, idInt)
+
+	closest := findClosestN(idShortBytes, 3)
+	for _, peerEntry := range closest {
+		peer := peerEntry.Peer
+		if peer != nil {
+			peerDist := new(big.Int)
+			peerDist.SetBytes(peer.SignPub)
+			peerDist.Xor(peerDist, idInt)
+
+			if peerDist.Cmp(selfDist) < 0 {
+				peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
+			}
+		}
+	}
 }
 
 func flood(env *Envelope) {
@@ -92,15 +140,20 @@ func sendSuggestions(peer *Peer, requestData []byte) {
 	peerSet = append(peerSet)
 	for _, idInt := range peerIdealTable {
 		closestPeerEntry := findClosest(idInt.Bytes())
-		isRequestingPeer := bytes.Compare(peer.SignPub, closestPeerEntry.ID) == 0
-		if closestPeerEntry.Peer != nil && !isRequestingPeer {
-			closestPeer := closestPeerEntry.Peer
-			_, contains := peerSetHelper[closestPeer.ID()]
+		if closestPeerEntry == nil {
+			continue
+		}
 
-			if !contains {
-				peerSetHelper[closestPeer.ID()] = true
-				peerSet = append(peerSet, *closestPeer)
-			}
+		if bytes.Compare(peer.SignPub, closestPeerEntry.ID) == 0 {
+			continue
+		}
+
+		closestPeer := closestPeerEntry.Peer
+		_, contains := peerSetHelper[closestPeer.ID()]
+
+		if !contains {
+			peerSetHelper[closestPeer.ID()] = true
+			peerSet = append(peerSet, *closestPeer)
 		}
 	}
 
@@ -208,12 +261,12 @@ func sendChat(msg string) {
 	sendPeers := make(map[string]*Peer)
 	for _, list := range peerTable {
 		curr := list.Front()
-		currEntry := curr.Value.(*PeerEntry)
-		currPeer := currEntry.Peer
-
-		if currPeer == nil {
+		if curr == nil {
 			continue
 		}
+
+		currEntry := curr.Value.(*PeerEntry)
+		currPeer := currEntry.Peer
 
 		sendPeers[currPeer.ID()] = currPeer
 	}
@@ -327,7 +380,7 @@ func sendPulse(min MinPeer) {
 	env := Envelope{
 		Type: "pulse",
 		From: peerSelf.ID(),
-		To:   ""}
+		To:   min.ID()}
 
 	pulse := MessageTime{
 		MessageType: 1,
@@ -341,11 +394,5 @@ func sendPulse(min MinPeer) {
 
 	env.Data = sign.Sign([]byte(jsonPulse), self.SignPrv)
 
-	jsonEnv, err := json.Marshal(env)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	route([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
+	route(&env)
 }

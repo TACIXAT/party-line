@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"container/list"
 	"encoding/hex"
+	// "fmt"
 	"github.com/kevinburke/nacl/sign"
 	"log"
 	"math/big"
@@ -12,7 +13,7 @@ import (
 
 var peerTable [256]*list.List
 var idealPeerIds [256]*big.Int
-var peerCache map[string]bool
+var peerCache map[string]PeerCache
 var emptyList bool = true
 
 type PeerEntry struct {
@@ -22,8 +23,14 @@ type PeerEntry struct {
 	Seen     time.Time
 }
 
+type PeerCache struct {
+	Added        bool
+	Announced    bool
+	Disconnected bool
+}
+
 func init() {
-	peerCache = make(map[string]bool)
+	peerCache = make(map[string]PeerCache)
 }
 
 func initTable(idBytes []byte) {
@@ -33,15 +40,7 @@ func initTable(idBytes []byte) {
 	for i := 0; i < 256; i++ {
 		peerDist := new(big.Int)
 		peerDist.Xor(idealPeerIds[i], idInt)
-
-		peerEntry := new(PeerEntry)
-		peerEntry.ID = idBytes
-		peerEntry.Distance = peerDist
-		peerEntry.Peer = nil
-		peerEntry.Seen = time.Now()
-
 		peerTable[i] = list.New()
-		peerTable[i].PushFront(peerEntry)
 	}
 }
 
@@ -69,27 +68,30 @@ func calculateIdealTableSelf(idBytes []byte) {
 }
 
 func removePeer(peerId string) {
+	// TODO: use closest index instead of exhaustive search
 	bytesId, err := hex.DecodeString(peerId)
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
-	for i := 0; i < 256; i++ {
-		removeList := make([]*list.Element, 0)
-		for curr := peerTable[i].Front(); curr != nil; curr = curr.Next() {
-			entry := curr.Value.(*PeerEntry)
-			if bytes.Compare(entry.ID, bytesId) == 0 {
-				removeList = append(removeList, curr)
-			}
-		}
+	intId := new(big.Int)
+	intId.SetBytes(bytesId)
+	idx := closestIndex(intId)
 
-		for _, element := range removeList {
-			peerTable[i].Remove(element)
+	removeList := make([]*list.Element, 0)
+	for curr := peerTable[idx].Front(); curr != nil; curr = curr.Next() {
+		entry := curr.Value.(*PeerEntry)
+		if bytes.Compare(entry.ID, bytesId) == 0 {
+			removeList = append(removeList, curr)
 		}
 	}
 
-	if !havePeers() {
+	for _, element := range removeList {
+		peerTable[idx].Remove(element)
+	}
+
+	if !emptyList && !havePeers() {
 		chatStatus("all friends gone, bootstrap some new ones")
 		emptyList = true
 	}
@@ -113,7 +115,7 @@ func removeStalePeers() {
 		}
 	}
 
-	if removed && !havePeers() {
+	if removed && !havePeers() && !emptyList {
 		chatStatus("all friends gone, bootstrap some new ones")
 		emptyList = true
 	}
@@ -138,48 +140,44 @@ func havePeers() bool {
 }
 
 func cacheMin(min MinPeer) {
-	peerCache[min.ID()] = false
+	cache := peerCache[min.ID()]
+	peerCache[min.ID()] = cache
 }
 
 func addPeer(peer *Peer) {
-	peerCache[peer.ID()] = true
+	cache, seen := peerCache[peer.ID()]
+	if seen && cache.Added {
+		return
+	}
+
+	cache.Added = true
+	peerCache[peer.ID()] = cache
 
 	idBytes := peer.SignPub
 	insertId := new(big.Int)
 	insertId.SetBytes(idBytes)
 
-	for i := 0; i < 256; i++ {
-		insertDist := new(big.Int)
-		insertDist.Xor(idealPeerIds[i], insertId)
+	idx := closestIndex(insertId)
+	peerList := peerTable[idx]
 
-		last := peerTable[i].Back()
-		lastPeerEntry := last.Value.(*PeerEntry)
-		if insertDist.Cmp(lastPeerEntry.Distance) < 0 {
-			insertEntry := new(PeerEntry)
-			insertEntry.ID = idBytes
-			insertEntry.Distance = insertDist
-			insertEntry.Peer = peer
-			insertEntry.Seen = time.Now()
+	insertDist := new(big.Int)
+	insertDist.Xor(idealPeerIds[idx], insertId)
 
-			curr := last
-			currPeerEntry := lastPeerEntry
-			for curr != nil && insertDist.Cmp(currPeerEntry.Distance) < 0 {
-				curr = curr.Prev()
-				if curr != nil {
-					currPeerEntry = curr.Value.(*PeerEntry)
-				}
-			}
+	insertEntry := new(PeerEntry)
+	insertEntry.ID = idBytes
+	insertEntry.Distance = insertDist
+	insertEntry.Peer = peer
+	insertEntry.Seen = time.Now()
 
-			if curr == nil {
-				peerTable[i].PushFront(insertEntry)
-			} else {
-				peerTable[i].InsertAfter(insertEntry, curr)
-			}
+	curr := peerList.Back()
+	for curr != nil && insertDist.Cmp(curr.Value.(*PeerEntry).Distance) < 0 {
+		curr = curr.Prev()
+	}
 
-			if peerTable[i].Len() > 20 {
-				peerTable[i].Remove(last)
-			}
-		}
+	if curr == nil {
+		peerTable[idx].PushFront(insertEntry)
+	} else {
+		peerTable[idx].InsertAfter(insertEntry, curr)
 	}
 
 	if emptyList {
@@ -193,24 +191,25 @@ func wouldAddPeer(peer *Peer) bool {
 	insertId := new(big.Int)
 	insertId.SetBytes(idBytes)
 
-	for i := 0; i < 256; i++ {
-		insertDist := new(big.Int)
-		insertDist.Xor(idealPeerIds[i], insertId)
+	idx := closestIndex(insertId)
 
-		last := peerTable[i].Back()
-		lastPeerEntry := last.Value.(*PeerEntry)
-		if insertDist.Cmp(lastPeerEntry.Distance) < 0 {
-			return true
-		}
+	insertDist := new(big.Int)
+	insertDist.Xor(idealPeerIds[idx], insertId)
+
+	if peerTable[idx].Len() < 20 {
+		return true
+	}
+
+	last := peerTable[idx].Back()
+	lastPeerEntry := last.Value.(*PeerEntry)
+	if insertDist.Cmp(lastPeerEntry.Distance) < 0 {
+		return true
 	}
 
 	return false
 }
 
-func findClosestN(idBytes []byte, n int) []*PeerEntry {
-	idInt := new(big.Int)
-	idInt.SetBytes(idBytes)
-
+func closestIndex(idInt *big.Int) int {
 	// find lowest of ideal table
 	lowestIdealDist := new(big.Int)
 	lowestIdealIdx := 0
@@ -229,11 +228,20 @@ func findClosestN(idBytes []byte, n int) []*PeerEntry {
 		}
 	}
 
+	return lowestIdealIdx
+}
+
+func findClosestN(idBytes []byte, n int) []*PeerEntry {
+	idInt := new(big.Int)
+	idInt.SetBytes(idBytes)
+
+	closestIdx := closestIndex(idInt)
+
 	closest := make([]*PeerEntry, 0)
 	dists := make([]*big.Int, 0)
 
 	// find lowest entry in bucket
-	peerList := peerTable[lowestIdealIdx]
+	peerList := peerTable[closestIdx]
 	for curr := peerList.Front(); curr != nil; curr = curr.Next() {
 		entry := curr.Value.(*PeerEntry)
 		entryDist := new(big.Int)
@@ -258,46 +266,13 @@ func findClosestN(idBytes []byte, n int) []*PeerEntry {
 }
 
 func findClosest(idBytes []byte) *PeerEntry {
-	idInt := new(big.Int)
-	idInt.SetBytes(idBytes)
+	closest := findClosestN(idBytes, 1)
 
-	// find lowest of ideal table
-	lowestIdealDist := new(big.Int)
-	lowestIdealIdx := 0
-	for i := 0; i < 256; i++ {
-		dist := new(big.Int)
-		dist.Xor(idealPeerIds[i], idInt)
-
-		if i == 0 {
-			lowestIdealDist = dist
-			lowestIdealIdx = i
-		}
-
-		if dist.Cmp(lowestIdealDist) < 0 {
-			lowestIdealDist = dist
-			lowestIdealIdx = i
-		}
-	}
-
-	// find lowest entry in bucket
-	closestDist := new(big.Int)
-	closestElement := peerTable[lowestIdealIdx].Front()
-	for curr := closestElement; curr != nil; curr = curr.Next() {
-		entry := curr.Value.(*PeerEntry)
-		entryDist := new(big.Int)
-		entryDist.SetBytes(entry.ID)
-		entryDist.Xor(entryDist, idInt)
-		if entryDist.Cmp(closestDist) < 0 {
-			closestDist = entryDist
-			closestElement = curr
-		}
-	}
-
-	if closestElement == nil {
+	if len(closest) == 0 {
 		return nil
 	}
 
-	return closestElement.Value.(*PeerEntry)
+	return closest[0]
 }
 
 func refreshPeer(peerId string) {

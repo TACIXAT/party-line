@@ -46,13 +46,7 @@ func (party *PartyLine) SendInvite(min MinPeer) {
 	closed := box.EasySeal([]byte(jsonInvite), min.EncPub, self.EncPrv)
 	env.Data = closed
 
-	jsonEnv, err := json.Marshal(env)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	route(jsonEnv)
+	route(&env)
 }
 
 func (party *PartyLine) ProcessAnnounce(partyEnv *PartyEnvelope) {
@@ -134,14 +128,9 @@ func (party *PartyLine) SendAnnounce() {
 
 		closed := box.EasySeal([]byte(jsonPartyEnv), min.EncPub, self.EncPrv)
 		env.Data = closed
+		env.To = idMin
 
-		jsonEnv, err := json.Marshal(env)
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-
-		route(jsonEnv)
+		route(&env)
 	}
 }
 
