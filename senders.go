@@ -10,6 +10,13 @@ import (
 	"time"
 )
 
+func route(msg []byte) {
+	// to
+	// find nearest N ???
+	// findClosestN()
+	// send to N
+}
+
 func flood(env *Envelope) {
 	jsonEnv, err := json.Marshal(env)
 	if err != nil {

@@ -207,6 +207,56 @@ func wouldAddPeer(peer *Peer) bool {
 	return false
 }
 
+func findClosestN(idBytes []byte, n int) []*PeerEntry {
+	idInt := new(big.Int)
+	idInt.SetBytes(idBytes)
+
+	// find lowest of ideal table
+	lowestIdealDist := new(big.Int)
+	lowestIdealIdx := 0
+	for i := 0; i < 256; i++ {
+		dist := new(big.Int)
+		dist.Xor(idealPeerIds[i], idInt)
+
+		if i == 0 {
+			lowestIdealDist = dist
+			lowestIdealIdx = i
+		}
+
+		if dist.Cmp(lowestIdealDist) < 0 {
+			lowestIdealDist = dist
+			lowestIdealIdx = i
+		}
+	}
+
+	closest := make([]*PeerEntry, 0)
+	dists := make([]*big.Int, 0)
+
+	// find lowest entry in bucket
+	peerList := peerTable[lowestIdealIdx]
+	for curr := peerList.Front(); curr != nil; curr = curr.Next() {
+		entry := curr.Value.(*PeerEntry)
+		entryDist := new(big.Int)
+		entryDist.SetBytes(entry.ID)
+		entryDist.Xor(entryDist, idInt)
+
+		i := 0
+		for i = 0; i < len(closest); i++ {
+			if entryDist.Cmp(dists[i]) < 0 {
+				break
+			}
+		}
+
+		closest = append(closest[:i], append([]*PeerEntry{entry}, closest[i:]...)...)
+		dists = append(dists[:i], append([]*big.Int{entryDist}, dists[i:]...)...)
+		if len(closest) > n {
+			closest = closest[:n]
+		}
+	}
+
+	return closest
+}
+
 func findClosest(idBytes []byte) *PeerEntry {
 	idInt := new(big.Int)
 	idInt.SetBytes(idBytes)
@@ -248,10 +298,6 @@ func findClosest(idBytes []byte) *PeerEntry {
 	}
 
 	return closestElement.Value.(*PeerEntry)
-}
-
-func route(msg []byte) {
-
 }
 
 func refreshPeer(peerId string) {
