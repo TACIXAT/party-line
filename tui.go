@@ -19,13 +19,22 @@ type Chat struct {
 
 var chatLog []Chat
 var messageBox *termui.Par
-var IDS int64 // id display size
+var IDS int // id display size
 var chatMutex *sync.Mutex
 
 func init() {
 	IDS = 6
 	chatMutex = new(sync.Mutex)
 }
+
+func displayId(id string) string {
+		idLen := len(id)
+		if IDS <= idLen {
+			return id[:IDS]
+		}
+		
+		return id + strings.Repeat(" ", IDS - idLen)	
+}		
 
 func formatChatsFit() string {
 	height := messageBox.Height - 2
@@ -34,7 +43,7 @@ func formatChatsFit() string {
 	lines := make([]string, 0)
 	for i := 0; i < len(chatLog); i++ {
 		chat := chatLog[i]
-		msg := chat.Time.Format("15:04:05 ") + chat.Id[:IDS] + " " + chat.Message
+		msg := chat.Time.Format("15:04:05 ") + displayId(chat.Id) + " " + chat.Message
 		if i != len(chatLog)-1 && msg[len(msg)-1] != '\n' {
 			msg += "\n"
 		}
@@ -73,7 +82,7 @@ func formatChats() string {
 			chatStr += "\n"
 		}
 
-		msg := chat.Time.Format("15:04:05 ") + chat.Id[:IDS] + " " + chat.Message
+		msg := chat.Time.Format("15:04:05 ") + displayId(chat.Id) + " " + chat.Message
 		chatStr += msg
 	}
 
@@ -110,7 +119,7 @@ func chatStatus(status string) {
 	chat := Chat{
 		Time:    time.Now(),
 		Id:      "SYSTEM",
-		Channel: "mainline",
+		Channel: "",
 		Message: status}
 
 	addChat(chat)
@@ -251,8 +260,9 @@ func handleIds(toks []string) {
 		return
 	}
 
-	IDS = size
+	IDS = int(size)
 	setStatus(fmt.Sprintf("set id display size to %d", IDS))
+	redrawChats()
 }
 
 // send message on channel
