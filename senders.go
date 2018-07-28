@@ -247,12 +247,12 @@ func sendChat(msg string) {
 		From: peerSelf.Id(),
 		To:   ""}
 
-	chat := MessageChat{
-		Chat: msg,
-		Time: time.Now(),
-		Min:  peerSelf.Min()}
+	msgChat := MessageChat{
+		Message: msg,
+		Time:    time.Now(),
+		Min:     peerSelf.Min()}
 
-	jsonChat, err := json.Marshal(chat)
+	jsonChat, err := json.Marshal(msgChat)
 	if err != nil {
 		log.Println(err)
 		return

@@ -7,6 +7,7 @@ import (
 	"github.com/kevinburke/nacl/sign"
 	"log"
 	"net"
+	"time"
 )
 
 func processMessage(strMsg string) {
@@ -44,6 +45,8 @@ func processMessage(strMsg string) {
 	default:
 		chatStatus("unknown msg type: " + env.Type)
 	}
+
+	// chatStatus(fmt.Sprintf("got %s", env.Type))
 }
 
 func verifyEnvelope(env *Envelope, caller string) ([]byte, error) {
@@ -70,23 +73,34 @@ func processChat(env *Envelope) {
 		return
 	}
 
-	var chat MessageChat
-	err = json.Unmarshal(jsonData, &chat)
+	var msgChat MessageChat
+	err = json.Unmarshal(jsonData, &msgChat)
 	if err != nil {
 		log.Println(err)
 		setStatus("error invalid json (chat)")
 		return
 	}
 
-	uniqueId := env.From + "." + chat.Time.String()
+	if msgChat.Min.Id() != env.From {
+		setStatus("error invalid peer (chat)")
+		return
+	}
+
+	uniqueId := env.From + "." + msgChat.Time.String()
 	_, seen := seenChats[uniqueId]
 	if !seen {
-		displayChat(env.From, chat)
+		chat := Chat{
+			Time:    time.Now(),
+			Id:      env.From,
+			Channel: "mainline",
+			Message: msgChat.Message}
+
+		addChat(chat)
 		flood(env)
 		seenChats[uniqueId] = true
 	}
 
-	cacheMin(chat.Min)
+	cacheMin(msgChat.Min)
 }
 
 func processBootstrap(env *Envelope) {

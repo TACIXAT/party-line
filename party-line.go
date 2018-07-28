@@ -87,9 +87,9 @@ type MessageSuggestionRequest struct {
 }
 
 type MessageChat struct {
-	Min  MinPeer
-	Chat string
-	Time time.Time
+	Min     MinPeer
+	Message string
+	Time    time.Time
 }
 
 type MessageTime struct {

@@ -6,21 +6,25 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 type Chat struct {
 	Time    time.Time
 	Id      string
+	Channel string
 	Message string
 }
 
 var chatLog []Chat
 var messageBox *termui.Par
 var IDS int64 // id display size
+var chatMutex *sync.Mutex
 
 func init() {
 	IDS = 6
+	chatMutex = new(sync.Mutex)
 }
 
 func formatChatsFit() string {
@@ -103,29 +107,25 @@ func handleBootstrap(toks []string) {
 }
 
 func chatStatus(status string) {
-	chatMsg := Chat{
+	chat := Chat{
 		Time:    time.Now(),
 		Id:      "SYSTEM",
+		Channel: "mainline",
 		Message: status}
 
-	chatLog = append(chatLog, chatMsg)
-	chats := formatChats()
-	chatChan <- chats
+	addChat(chat)
 }
 
 func setStatus(status string) {
 	statusChan <- status
 }
 
-func displayChat(from string, msgChat MessageChat) {
-	chat := Chat{
-		Time:    msgChat.Time,
-		Id:      from,
-		Message: msgChat.Chat}
-
+func addChat(chat Chat) {
+	chatMutex.Lock()
 	chatLog = append(chatLog, chat)
 	chats := formatChats()
 	chatChan <- chats
+	chatMutex.Unlock()
 }
 
 func redrawChats() {
@@ -257,12 +257,40 @@ func handleIds(toks []string) {
 
 // send message on channel
 func handleSend(toks []string) {
+	if len(toks) < 3 {
+		setStatus("error insufficient args to leave command")
+		return
+	}
+
+	partyPrefix := toks[1]
+	message := strings.Join(toks[2:], " ")
+
+	// iterate parties
+	partyId := ""
+	for id, _ := range parties {
+		if strings.HasPrefix(id, partyPrefix) {
+			if partyId != "" {
+				setStatus(fmt.Sprintf(
+					"error multiple parties found for %s", partyPrefix))
+				return
+			}
+			partyId = id
+		}
+	}
+
+	if partyId == "" {
+		setStatus(fmt.Sprintf("error party not found for %s", partyPrefix))
+		return
+	}
+
+	parties[partyId].SendChat(message)
 	return
 }
 
 // clear messages
 func handleClear(toks []string) {
 	chatLog = nil
+	redrawChats()
 }
 
 func handleList() {
@@ -302,7 +330,7 @@ func handleLeave(toks []string) {
 		return
 	}
 
-	delete(parties, partyId)
+	parties[partyId].SendDisconnect()
 }
 
 func handleHelp() {
