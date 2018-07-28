@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"github.com/gizak/termui"
+	"log"
 	"strings"
 	"time"
 )
@@ -148,6 +150,105 @@ func chatDrawer(messageBox *termui.Par) {
 	}
 }
 
+// create channel
+func handleCreate(toks []string) {
+	if len(toks) < 2 {
+		setStatus("error processing create command")
+		return
+	}
+
+	id := partyStart(toks[1])
+	setStatus(fmt.Sprintf("party started %s", id))
+}
+
+// invite channel
+func handleInvite(toks []string) {
+	if len(toks) < 3 {
+		setStatus("error processing invite command")
+		return
+	}
+
+	partyPrefix := toks[1]
+	userSuffix := toks[2]
+
+	// iterate parties
+	var party *PartyLine
+	for id, p := range parties {
+		if strings.HasPrefix(id, partyPrefix) {
+			if party != nil {
+				setStatus(fmt.Sprintf(
+					"error multiple parties found for %s", partyPrefix))
+				return
+			}
+			party = p
+		}
+	}
+
+	if party == nil {
+		setStatus(fmt.Sprintf("error party not found for %s", partyPrefix))
+		return
+	}
+
+	// iterate users
+	var min *MinPeer
+	for id, _ := range peerCache {
+		front, err := idFront(id)
+		if err != nil {
+			setStatus("error decoding peer id")
+			log.Println(err)
+			continue
+		}
+
+		if strings.HasSuffix(front, userSuffix) {
+			if min != nil {
+				setStatus(fmt.Sprintf(
+					"error multiple peers found for %s", userSuffix))
+				return
+			}
+
+			min, err = idToMin(id)
+			if err != nil {
+				setStatus("error decoding peer")
+				log.Println(err)
+				continue
+			}
+		}
+	}
+
+	if min == nil {
+		setStatus(fmt.Sprintf("error peer not found for %s", userSuffix))
+		return
+	}
+
+	party.SendInvite(min)
+}
+
+// show message visibility
+func handleShow(toks []string) {
+	// all
+	// mainline
+	// channel name
+}
+
+// set id display size
+func handleIds(toks []string) {
+
+}
+
+// send message on channel
+func handleSend(toks []string) {
+
+}
+
+// clear messages
+func handleClear(toks []string) {
+
+}
+
+func handleList(toks []string) {
+
+}
+
 func handleHelp() {
 	return
 }
@@ -166,6 +267,20 @@ func handleUserInput(buf string) {
 		handleBootstrap(toks)
 	case "/help":
 		handleHelp()
+	case "/create":
+		handleCreate(toks)
+	case "/invite":
+		handleInvite(toks)
+	case "/show":
+		handleShow(toks)
+	case "/ids":
+		handleIds(toks)
+	case "/send":
+		handleSend(toks)
+	case "/clear":
+		handleClear(toks)
+	case "/list":
+		handleList(toks)
 	default:
 		handleChat(buf)
 	}

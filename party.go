@@ -31,7 +31,7 @@ type PartyAnnounce struct {
 	PartyID string
 }
 
-func (party *PartyLine) SendInvite(min MinPeer) {
+func (party *PartyLine) SendInvite(min *MinPeer) {
 	env := Envelope{
 		Type: "invite",
 		From: peerSelf.ID(),
@@ -188,7 +188,7 @@ func processInvite(env *Envelope) {
 		return
 	}
 
-	// party.SendAnnounce()
+	party.SendAnnounce()
 	parties[party.ID] = party
 }
 
@@ -199,7 +199,7 @@ func minimum(a, b int) int {
 	return b
 }
 
-func newParty(name string) {
+func partyStart(name string) string {
 	idBytes := make([]byte, 16)
 	rand.Read(idBytes)
 
@@ -213,4 +213,6 @@ func newParty(name string) {
 	party.MinList[peerSelf.ID()] = 0
 
 	parties[party.ID] = party
+
+	return party.ID
 }
