@@ -37,6 +37,10 @@ func processMessage(strMsg string) {
 		processPulse(env)
 	case "verifybs":
 		processVerify(env)
+	case "party":
+		processParty(env)
+	case "invite":
+		processInvite(env)
 	default:
 		chatStatus("unknown msg type: " + env.Type)
 	}
@@ -74,12 +78,12 @@ func processChat(env *Envelope) {
 		return
 	}
 
-	uniqueID := env.From + "." + chat.Time.String()
-	_, seen := seenChats[uniqueID]
+	uniqueId := env.From + "." + chat.Time.String()
+	_, seen := seenChats[uniqueId]
 	if !seen {
 		displayChat(env.From, chat)
 		flood(env)
-		seenChats[uniqueID] = true
+		seenChats[uniqueId] = true
 	}
 
 	cacheMin(chat.Min)
@@ -100,7 +104,7 @@ func processBootstrap(env *Envelope) {
 		return
 	}
 
-	if env.From != peer.ID() {
+	if env.From != peer.Id() {
 		setStatus("id does not match from (bs)")
 		return
 	}
@@ -133,7 +137,7 @@ func processVerify(env *Envelope) {
 		return
 	}
 
-	if env.From != peer.ID() {
+	if env.From != peer.Id() {
 		setStatus("id does not match from (bsverify)")
 		return
 	}
@@ -167,11 +171,11 @@ func processAnnounce(env *Envelope) {
 		return
 	}
 
-	if peer.ID() == peerSelf.ID() {
+	if peer.Id() == peerSelf.Id() {
 		return
 	}
 
-	cache, seen := peerCache[peer.ID()]
+	cache, seen := peerCache[peer.Id()]
 	if !seen || !cache.Added {
 		peerConn, err := net.Dial("udp", peer.Address)
 		if err != nil {
@@ -186,9 +190,9 @@ func processAnnounce(env *Envelope) {
 
 	if !seen || !cache.Announced {
 		flood(env)
-		cache = peerCache[peer.ID()]
+		cache = peerCache[peer.Id()]
 		cache.Announced = true
-		peerCache[peer.ID()] = cache
+		peerCache[peer.Id()] = cache
 	}
 }
 
@@ -207,7 +211,7 @@ func processSuggestionRequest(env *Envelope) {
 		return
 	}
 
-	if request.To != peerSelf.ID() {
+	if request.To != peerSelf.Id() {
 		setStatus("error invalid to (request)")
 		return
 	}
@@ -226,7 +230,7 @@ func processSuggestionRequest(env *Envelope) {
 
 	sendSuggestions(peer, env.Data)
 
-	cache, seen := peerCache[peer.ID()]
+	cache, seen := peerCache[peer.Id()]
 	if !seen || !cache.Added {
 		addPeer(peer)
 	}
@@ -257,7 +261,7 @@ func processSuggestions(env *Envelope) {
 	peer := new(Peer)
 	*peer = suggestions.Peer
 
-	cache, seen := peerCache[peer.ID()]
+	cache, seen := peerCache[peer.Id()]
 	if !seen || !cache.Added {
 		peerConn, err := net.Dial("udp", peer.Address)
 		if err != nil {
@@ -271,7 +275,7 @@ func processSuggestions(env *Envelope) {
 	}
 
 	for _, newPeer := range suggestions.SuggestedPeers {
-		cache, seen := peerCache[newPeer.ID()]
+		cache, seen := peerCache[newPeer.Id()]
 		if !seen && !cache.Added && wouldAddPeer(&newPeer) {
 			peerConn, err := net.Dial("udp", newPeer.Address)
 			if err != nil {

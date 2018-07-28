@@ -17,7 +17,7 @@ var peerCache map[string]PeerCache
 var emptyList bool = true
 
 type PeerEntry struct {
-	ID       sign.PublicKey
+	Id       sign.PublicKey
 	Distance *big.Int
 	Peer     *Peer
 	Seen     time.Time
@@ -82,7 +82,7 @@ func removePeer(peerId string) {
 	removeList := make([]*list.Element, 0)
 	for curr := peerTable[idx].Front(); curr != nil; curr = curr.Next() {
 		entry := curr.Value.(*PeerEntry)
-		if bytes.Compare(entry.ID, bytesId) == 0 {
+		if bytes.Compare(entry.Id, bytesId) == 0 {
 			removeList = append(removeList, curr)
 		}
 	}
@@ -140,18 +140,18 @@ func havePeers() bool {
 }
 
 func cacheMin(min MinPeer) {
-	cache := peerCache[min.ID()]
-	peerCache[min.ID()] = cache
+	cache := peerCache[min.Id()]
+	peerCache[min.Id()] = cache
 }
 
 func addPeer(peer *Peer) {
-	cache, seen := peerCache[peer.ID()]
+	cache, seen := peerCache[peer.Id()]
 	if seen && cache.Added {
 		return
 	}
 
 	cache.Added = true
-	peerCache[peer.ID()] = cache
+	peerCache[peer.Id()] = cache
 
 	idBytes := peer.SignPub
 	insertId := new(big.Int)
@@ -164,7 +164,7 @@ func addPeer(peer *Peer) {
 	insertDist.Xor(idealPeerIds[idx], insertId)
 
 	insertEntry := new(PeerEntry)
-	insertEntry.ID = idBytes
+	insertEntry.Id = idBytes
 	insertEntry.Distance = insertDist
 	insertEntry.Peer = peer
 	insertEntry.Seen = time.Now()
@@ -245,7 +245,7 @@ func findClosestN(idBytes []byte, n int) []*PeerEntry {
 	for curr := peerList.Front(); curr != nil; curr = curr.Next() {
 		entry := curr.Value.(*PeerEntry)
 		entryDist := new(big.Int)
-		entryDist.SetBytes(entry.ID)
+		entryDist.SetBytes(entry.Id)
 		entryDist.Xor(entryDist, idInt)
 
 		i := 0
@@ -285,7 +285,7 @@ func refreshPeer(peerId string) {
 	for i := 0; i < 256; i++ {
 		for curr := peerTable[i].Front(); curr != nil; curr = curr.Next() {
 			entry := curr.Value.(*PeerEntry)
-			if bytes.Compare(entry.ID, bytesId) == 0 {
+			if bytes.Compare(entry.Id, bytesId) == 0 {
 				entry.Seen = time.Now()
 			}
 		}

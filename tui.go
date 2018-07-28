@@ -4,18 +4,24 @@ import (
 	"fmt"
 	"github.com/gizak/termui"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 )
 
 type Chat struct {
 	Time    time.Time
-	ID      string
+	Id      string
 	Message string
 }
 
 var chatLog []Chat
 var messageBox *termui.Par
+var IDS int64 // id display size
+
+func init() {
+	IDS = 6
+}
 
 func formatChatsFit() string {
 	height := messageBox.Height - 2
@@ -24,7 +30,7 @@ func formatChatsFit() string {
 	lines := make([]string, 0)
 	for i := 0; i < len(chatLog); i++ {
 		chat := chatLog[i]
-		msg := chat.Time.Format("15:04:05 ") + chat.ID[:6] + " " + chat.Message
+		msg := chat.Time.Format("15:04:05 ") + chat.Id[:IDS] + " " + chat.Message
 		if i != len(chatLog)-1 && msg[len(msg)-1] != '\n' {
 			msg += "\n"
 		}
@@ -63,7 +69,7 @@ func formatChats() string {
 			chatStr += "\n"
 		}
 
-		msg := chat.Time.Format("15:04:05 ") + chat.ID[:6] + " " + chat.Message
+		msg := chat.Time.Format("15:04:05 ") + chat.Id[:IDS] + " " + chat.Message
 		chatStr += msg
 	}
 
@@ -99,7 +105,7 @@ func handleBootstrap(toks []string) {
 func chatStatus(status string) {
 	chatMsg := Chat{
 		Time:    time.Now(),
-		ID:      "SYSTEM",
+		Id:      "SYSTEM",
 		Message: status}
 
 	chatLog = append(chatLog, chatMsg)
@@ -114,7 +120,7 @@ func setStatus(status string) {
 func displayChat(from string, msgChat MessageChat) {
 	chat := Chat{
 		Time:    msgChat.Time,
-		ID:      from,
+		Id:      from,
 		Message: msgChat.Chat}
 
 	chatLog = append(chatLog, chat)
@@ -151,9 +157,9 @@ func chatDrawer(messageBox *termui.Par) {
 }
 
 // create channel
-func handleCreate(toks []string) {
+func handleStart(toks []string) {
 	if len(toks) < 2 {
-		setStatus("error processing create command")
+		setStatus("error insufficient args to create command")
 		return
 	}
 
@@ -164,12 +170,12 @@ func handleCreate(toks []string) {
 // invite channel
 func handleInvite(toks []string) {
 	if len(toks) < 3 {
-		setStatus("error processing invite command")
+		setStatus("error insufficient args to invite command")
 		return
 	}
 
 	partyPrefix := toks[1]
-	userSuffix := toks[2]
+	userPrefix := toks[2]
 
 	// iterate parties
 	var party *PartyLine
@@ -189,7 +195,7 @@ func handleInvite(toks []string) {
 		return
 	}
 
-	// iterate users
+	// iterate peers
 	var min *MinPeer
 	for id, _ := range peerCache {
 		front, err := idFront(id)
@@ -199,10 +205,10 @@ func handleInvite(toks []string) {
 			continue
 		}
 
-		if strings.HasSuffix(front, userSuffix) {
+		if strings.HasPrefix(front, userPrefix) {
 			if min != nil {
 				setStatus(fmt.Sprintf(
-					"error multiple peers found for %s", userSuffix))
+					"error multiple peers found for %s", userPrefix))
 				return
 			}
 
@@ -216,7 +222,7 @@ func handleInvite(toks []string) {
 	}
 
 	if min == nil {
-		setStatus(fmt.Sprintf("error peer not found for %s", userSuffix))
+		setStatus(fmt.Sprintf("error peer not found for %s", userPrefix))
 		return
 	}
 
@@ -232,24 +238,97 @@ func handleShow(toks []string) {
 
 // set id display size
 func handleIds(toks []string) {
+	if len(toks) < 2 {
+		setStatus("error insufficient args to ids command")
+		return
+	}
 
+	// hex for lol
+	size, err := strconv.ParseInt(toks[1], 16, 64)
+	if err != nil {
+		setStatus("error insufficient args to ids command")
+		log.Println(err)
+		return
+	}
+
+	IDS = size
+	setStatus(fmt.Sprintf("set id display size to %d", IDS))
 }
 
 // send message on channel
 func handleSend(toks []string) {
-
+	return
 }
 
 // clear messages
 func handleClear(toks []string) {
-
+	chatLog = nil
 }
 
-func handleList(toks []string) {
+func handleList() {
+	if len(parties) == 0 {
+		setStatus("error no parties to list")
+		return
+	}
 
+	for id, _ := range parties {
+		chatStatus(fmt.Sprintf("%s", id))
+	}
+}
+
+func handleLeave(toks []string) {
+	if len(toks) < 2 {
+		setStatus("error insufficient args to leave command")
+		return
+	}
+
+	partyPrefix := toks[1]
+
+	// iterate parties
+	partyId := ""
+	for id, _ := range parties {
+		if strings.HasPrefix(id, partyPrefix) {
+			if partyId != "" {
+				setStatus(fmt.Sprintf(
+					"error multiple parties found for %s", partyPrefix))
+				return
+			}
+			partyId = id
+		}
+	}
+
+	if partyId == "" {
+		setStatus(fmt.Sprintf("error party not found for %s", partyPrefix))
+		return
+	}
+
+	delete(parties, partyId)
 }
 
 func handleHelp() {
+	chatStatus("this is probably wildly out of date...")
+	chatStatus("/bs [bootstrap info]")
+	chatStatus("    list id (no arg) or bootstrap to a peer id")
+	chatStatus("/start <party_name>")
+	chatStatus("    start a party (name limit 8 characters)")
+	chatStatus("/invite <party_id> <user_id>")
+	chatStatus("    invite a user to a party (partial ids ok)")
+	chatStatus("/list")
+	chatStatus("    list party ids")
+	chatStatus("/send <party_id> msg")
+	chatStatus("    send message to party (partial id ok)")
+	chatStatus("/leave <party_id>")
+	chatStatus("    leaves the party (partial id ok)")
+	chatStatus("/show <all|mainline|party_id>")
+	chatStatus("    change what messages are displayed (partial id ok)")
+	chatStatus("/clear")
+	chatStatus("    clear chat log")
+	chatStatus("/ids <size>")
+	chatStatus("    change id display size (hex)")
+	chatStatus("/help")
+	chatStatus("    display this")
+	chatStatus("/quit")
+	chatStatus("    we'll miss you, but it was fun while you were here")
 	return
 }
 
@@ -265,22 +344,24 @@ func handleUserInput(buf string) {
 		termui.StopLoop()
 	case "/bs":
 		handleBootstrap(toks)
-	case "/help":
-		handleHelp()
-	case "/create":
-		handleCreate(toks)
+	case "/start":
+		handleStart(toks)
 	case "/invite":
 		handleInvite(toks)
-	case "/show":
-		handleShow(toks)
-	case "/ids":
-		handleIds(toks)
 	case "/send":
 		handleSend(toks)
+	case "/leave":
+		handleLeave(toks)
+	case "/show":
+		handleShow(toks)
 	case "/clear":
 		handleClear(toks)
+	case "/ids":
+		handleIds(toks)
+	case "/help":
+		handleHelp()
 	case "/list":
-		handleList(toks)
+		handleList()
 	default:
 		handleChat(buf)
 	}

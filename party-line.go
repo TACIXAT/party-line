@@ -39,13 +39,13 @@ type Peer struct {
 	Conn    net.Conn `json:"-"`
 }
 
-func (peer *Peer) ID() string {
+func (peer *Peer) Id() string {
 	signStr := hex.EncodeToString(peer.SignPub[:])
 	encStr := hex.EncodeToString(peer.EncPub[:])
 	return signStr + "." + encStr
 }
 
-func (peer *Peer) ShortID() string {
+func (peer *Peer) ShortId() string {
 	signStr := hex.EncodeToString(peer.SignPub[:])
 	return signStr
 }
@@ -62,7 +62,7 @@ type MinPeer struct {
 	SignPub sign.PublicKey
 }
 
-func (min *MinPeer) ID() string {
+func (min *MinPeer) Id() string {
 	signStr := hex.EncodeToString(min.SignPub[:])
 	encStr := hex.EncodeToString(min.EncPub[:])
 	return signStr + "." + encStr
@@ -179,7 +179,7 @@ func getKeys() {
 	peerSelf.SignPub = self.SignPub
 	peerSelf.EncPub = self.EncPub
 	peerSelf.Address = self.Address
-	log.Println(peerSelf.ID())
+	log.Println(peerSelf.Id())
 }
 
 func recv(address string, port uint16) {
@@ -247,7 +247,7 @@ func main() {
 	seenChats = make(map[string]bool)
 	chatChan = make(chan string, 1)
 	statusChan = make(chan string, 1)
-	bsId = fmt.Sprintf("%s/%s/%s", extIP.String(), portStr, peerSelf.ShortID())
+	bsId = fmt.Sprintf("%s/%s/%s", extIP.String(), portStr, peerSelf.ShortId())
 	log.Println(bsId)
 	chatStatus(bsId)
 

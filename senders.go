@@ -82,14 +82,14 @@ func flood(env *Envelope) {
 				continue
 			}
 
-			_, sent := sentPeers[currPeer.ID()]
+			_, sent := sentPeers[currPeer.Id()]
 			if !sent {
 				if currPeer.Conn != nil {
 					currPeer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
 				} else {
-					chatStatus(fmt.Sprintf("currPeer conn nil %s", currPeer.ID()))
+					chatStatus(fmt.Sprintf("currPeer conn nil %s", currPeer.Id()))
 				}
-				sentPeers[currPeer.ID()] = true
+				sentPeers[currPeer.Id()] = true
 			}
 		}
 	}
@@ -100,12 +100,12 @@ func flood(env *Envelope) {
 func sendSuggestionRequest(peer *Peer) {
 	env := Envelope{
 		Type: "request",
-		From: peerSelf.ID(),
-		To:   peer.ID()}
+		From: peerSelf.Id(),
+		To:   peer.Id()}
 
 	request := MessageSuggestionRequest{
 		Peer: peerSelf,
-		To:   peer.ID()}
+		To:   peer.Id()}
 
 	jsonReq, err := json.Marshal(request)
 	if err != nil {
@@ -128,8 +128,8 @@ func sendSuggestionRequest(peer *Peer) {
 func sendSuggestions(peer *Peer, requestData []byte) {
 	env := Envelope{
 		Type: "suggestions",
-		From: peerSelf.ID(),
-		To:   peer.ID()}
+		From: peerSelf.Id(),
+		To:   peer.Id()}
 
 	// calculate ideal for id
 	peerIdealTable := calculateIdealTable(peer.SignPub)
@@ -144,15 +144,15 @@ func sendSuggestions(peer *Peer, requestData []byte) {
 			continue
 		}
 
-		if bytes.Compare(peer.SignPub, closestPeerEntry.ID) == 0 {
+		if bytes.Compare(peer.SignPub, closestPeerEntry.Id) == 0 {
 			continue
 		}
 
 		closestPeer := closestPeerEntry.Peer
-		_, contains := peerSetHelper[closestPeer.ID()]
+		_, contains := peerSetHelper[closestPeer.Id()]
 
 		if !contains {
-			peerSetHelper[closestPeer.ID()] = true
+			peerSetHelper[closestPeer.Id()] = true
 			peerSet = append(peerSet, *closestPeer)
 		}
 	}
@@ -190,7 +190,7 @@ func sendSuggestions(peer *Peer, requestData []byte) {
 func sendBootstrap(addr, peerId string) {
 	env := Envelope{
 		Type: "bootstrap",
-		From: peerSelf.ID(),
+		From: peerSelf.Id(),
 		To:   peerId}
 
 	jsonBs, err := json.Marshal(peerSelf)
@@ -220,8 +220,8 @@ func sendBootstrap(addr, peerId string) {
 func sendVerify(peer *Peer) {
 	env := Envelope{
 		Type: "verifybs",
-		From: peerSelf.ID(),
-		To:   peer.ID()}
+		From: peerSelf.Id(),
+		To:   peer.Id()}
 
 	jsonBs, err := json.Marshal(peerSelf)
 	if err != nil {
@@ -244,7 +244,7 @@ func sendVerify(peer *Peer) {
 func sendChat(msg string) {
 	env := Envelope{
 		Type: "chat",
-		From: peerSelf.ID(),
+		From: peerSelf.Id(),
 		To:   ""}
 
 	chat := MessageChat{
@@ -268,7 +268,7 @@ func sendChat(msg string) {
 		currEntry := curr.Value.(*PeerEntry)
 		currPeer := currEntry.Peer
 
-		sendPeers[currPeer.ID()] = currPeer
+		sendPeers[currPeer.Id()] = currPeer
 	}
 
 	if len(sendPeers) == 0 {
@@ -289,7 +289,7 @@ func sendChat(msg string) {
 func sendAnnounce(peer *Peer) {
 	env := Envelope{
 		Type: "announce",
-		From: peerSelf.ID(),
+		From: peerSelf.Id(),
 		To:   ""}
 
 	jsonAnnounce, err := json.Marshal(peerSelf)
@@ -313,7 +313,7 @@ func sendAnnounce(peer *Peer) {
 func sendDisconnect() {
 	env := Envelope{
 		Type: "disconnect",
-		From: peerSelf.ID(),
+		From: peerSelf.Id(),
 		To:   ""}
 
 	disconnect := MessageTime{
@@ -337,7 +337,7 @@ func sendPings() {
 		removeStalePeers()
 		env := Envelope{
 			Type: "ping",
-			From: peerSelf.ID(),
+			From: peerSelf.Id(),
 			To:   ""}
 
 		ping := MessagePing{
@@ -365,10 +365,10 @@ func sendPings() {
 			for curr := bucketList.Front(); curr != nil; curr = curr.Next() {
 				entry := curr.Value.(*PeerEntry)
 				if entry.Peer != nil {
-					_, seen := peerSeen[entry.Peer.ID()]
+					_, seen := peerSeen[entry.Peer.Id()]
 					if !seen {
 						entry.Peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
-						peerSeen[entry.Peer.ID()] = true
+						peerSeen[entry.Peer.Id()] = true
 					}
 				}
 			}
@@ -379,8 +379,8 @@ func sendPings() {
 func sendPulse(min MinPeer) {
 	env := Envelope{
 		Type: "pulse",
-		From: peerSelf.ID(),
-		To:   min.ID()}
+		From: peerSelf.Id(),
+		To:   min.Id()}
 
 	pulse := MessageTime{
 		MessageType: 1,
