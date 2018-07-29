@@ -32,7 +32,6 @@ When you start you'll see an ID that looks like `ip_addr/port/hex_id`. You need 
 
 ```
 /bs 192.5.18.184/1235/92b45c3818331430628fbe393d43f3c07f529c3a8fb70f67bb543d78d5320223
-
 ```
 
 Here are the other commands.
