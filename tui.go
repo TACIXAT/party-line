@@ -21,20 +21,31 @@ var chatLog []Chat
 var messageBox *termui.Par
 var IDS int // id display size
 var chatMutex *sync.Mutex
+var show string
 
 func init() {
 	IDS = 6
 	chatMutex = new(sync.Mutex)
+	show = ""
 }
 
 func displayId(id string) string {
-		idLen := len(id)
-		if IDS <= idLen {
-			return id[:IDS]
-		}
-		
-		return id + strings.Repeat(" ", IDS - idLen)	
-}		
+	idLen := len(id)
+	if IDS <= idLen {
+		return id[:IDS]
+	}
+
+	return strings.Repeat(" ", IDS-idLen) + id
+}
+
+func displayChannel(channel string) string {
+	channelLen := len(channel)
+	if 8 <= channelLen {
+		return channel[:8]
+	}
+
+	return strings.Repeat(" ", 8-channelLen) + channel
+}
 
 func formatChatsFit() string {
 	height := messageBox.Height - 2
@@ -43,7 +54,9 @@ func formatChatsFit() string {
 	lines := make([]string, 0)
 	for i := 0; i < len(chatLog); i++ {
 		chat := chatLog[i]
-		msg := chat.Time.Format("15:04:05 ") + displayId(chat.Id) + " " + chat.Message
+		msg := chat.Time.Format("15:04:05 ")
+		msg += "(" + displayChannel(chat.Channel) + ") "
+		msg += displayId(chat.Id) + " " + chat.Message
 		if i != len(chatLog)-1 && msg[len(msg)-1] != '\n' {
 			msg += "\n"
 		}
@@ -82,7 +95,9 @@ func formatChats() string {
 			chatStr += "\n"
 		}
 
-		msg := chat.Time.Format("15:04:05 ") + displayId(chat.Id) + " " + chat.Message
+		msg := chat.Time.Format("15:04:05 ") 
+		msg += "(" + displayChannel(chat.Channel) + ") "
+		msg += displayId(chat.Id) + " " + chat.Message
 		chatStr += msg
 	}
 
