@@ -54,9 +54,16 @@ func formatChatsFit() string {
 	lines := make([]string, 0)
 	for i := 0; i < len(chatLog); i++ {
 		chat := chatLog[i]
+
+		if show != "" && chat.Channel != "" && show != chat.Channel {
+			continue
+		}
+
 		msg := chat.Time.Format("15:04:05 ")
 		msg += "(" + displayChannel(chat.Channel) + ") "
-		msg += displayId(chat.Id) + " " + chat.Message
+		msg += displayId(chat.Id) + " "
+		msg += chat.Message
+
 		if i != len(chatLog)-1 && msg[len(msg)-1] != '\n' {
 			msg += "\n"
 		}
@@ -91,13 +98,18 @@ func formatChats() string {
 	chatStr := ""
 	for i := 0; i < len(chatLog); i++ {
 		chat := chatLog[i]
+		if show != "" && show != chat.Channel {
+			continue
+		}
+
 		if i != 0 {
 			chatStr += "\n"
 		}
 
-		msg := chat.Time.Format("15:04:05 ") 
+		msg := chat.Time.Format("15:04:05 ")
 		msg += "(" + displayChannel(chat.Channel) + ") "
-		msg += displayId(chat.Id) + " " + chat.Message
+		msg += displayId(chat.Id) + " "
+		msg += chat.Message
 		chatStr += msg
 	}
 
@@ -255,9 +267,45 @@ func handleInvite(toks []string) {
 
 // show message visibility
 func handleShow(toks []string) {
-	// all
-	// mainline
-	// channel name
+	if len(toks) < 2 {
+		show = ""
+		redrawChats()
+		return
+	}
+
+	if strings.HasPrefix("all", toks[1]) {
+		show = ""
+		redrawChats()
+		return
+	}
+
+	if strings.HasPrefix("mainline", toks[1]) {
+		show = "mainline"
+		redrawChats()
+		return
+	}
+
+	partyPrefix := toks[1]
+
+	var partyId string
+	for id, _ := range parties {
+		if strings.HasPrefix(id, partyPrefix) {
+			if partyId != "" {
+				setStatus(fmt.Sprintf(
+					"error multiple parties found for %s", partyPrefix))
+				return
+			}
+			partyId = id
+		}
+	}
+
+	if partyId == "" {
+		setStatus(fmt.Sprintf("error party not found for %s", partyPrefix))
+		return
+	}
+
+	show = partyId
+	redrawChats()
 }
 
 // set id display size
@@ -324,6 +372,7 @@ func handleList() {
 		return
 	}
 
+	chatStatus("      ==== PARTY LIST ====      ")
 	for id, _ := range parties {
 		chatStatus(fmt.Sprintf("%s", id))
 	}
