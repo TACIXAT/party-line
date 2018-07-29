@@ -31,7 +31,7 @@ Or download the prebuilt binaries from /bin (links on http://party-line.lol).
 When you start you'll see an ID that looks like `ip_addr/port/hex_id`. You need to find someone else's ID in order to bootstrap to them (or you can send yours to them for them to bootstrap to you.) You do this in the client with the `/bs` command.
 
 ```
-/bs 192.5.18.184/1235/92b45c3818331430628fbe393d43f3c07f529c3a8fb70f67bb543d78d5320223
+/bs 192.5.18.184/3499/92b45c3818331430628fbe393d43f3c07f529c3a8fb70f67bb543d78d5320223
 ```
 
 Here are the other commands.
