@@ -1,15 +1,15 @@
 package main
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
-	"crypto/sha256"
-	"io"
 )
 
 /*
@@ -24,15 +24,15 @@ import (
 */
 
 type PackFile struct {
-	Name   string
-	Files  []string
+	Name  string
+	Files []string
 }
 
 type Pack struct {
-	Name   string
-	Files  []string
-	Hashes []string
-	FirstBlockHashes []string
+	Name            string
+	Files           []string
+	Hashes          []string
+	LastBlockHashes []string
 }
 
 type File struct {
@@ -41,9 +41,20 @@ type File struct {
 	Coverage []uint64
 }
 
+type Block struct {
+	PrevBlockHash string
+	Data          []byte
+	DataHash      string
+}
+
 var sharedDirAbs string
 
 func sha256File(targetFile *os.File) string {
+	_, err := targetFile.Seek(0, 0)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	h := sha256.New()
 	if _, err := io.Copy(h, targetFile); err != nil {
 		log.Fatal(err)
@@ -53,7 +64,29 @@ func sha256File(targetFile *os.File) string {
 	return sha256
 }
 
+func sha256Bytes(buffer []byte) string {
+	sum := sha256.Sum256(buffer)
+	return fmt.Sprintf("%x", sum)
+}
+
+func sha256Block(block *Block) string {
+	if block == nil {
+		return ""
+	}
+
+	hash := sha256.New()
+	hash.Write([]byte(block.PrevBlockHash))
+	hash.Write([]byte(block.DataHash))
+	hash.Write(block.Data)
+	return fmt.Sprintf("%x", hash.Sum(nil))
+}
+
 func unpackFile(targetFile *os.File) *PackFile {
+	_, err := targetFile.Seek(0, 0)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	contents, err := ioutil.ReadAll(targetFile)
 	if err != nil {
 		log.Fatal(err)
@@ -68,11 +101,49 @@ func unpackFile(targetFile *os.File) *PackFile {
 	return packFile
 }
 
+func calculateChain(targetFile *os.File) string {
+	_, err := targetFile.Seek(0, 0)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	BUFFER_SIZE := 10240
+
+	var prev *Block
+	prev = nil
+
+	blocks := make(map[string]*Block)
+
+	for {
+		buffer := make([]byte, BUFFER_SIZE) // 10 KiB
+		bytesRead, err := targetFile.Read(buffer)
+		if err != nil {
+			if err != io.EOF {
+				log.Fatal(err)
+			}
+			break
+		}
+
+		sha256Buffer := sha256Bytes(buffer[:bytesRead])
+
+		curr := new(Block)
+		curr.Data = buffer[:bytesRead]
+		curr.DataHash = sha256Buffer
+		curr.PrevBlockHash = sha256Block(prev)
+
+		blockHash := sha256Block(curr)
+		blocks[blockHash] = curr
+
+		prev = curr
+	}
+
+	return sha256Block(prev)
+}
+
 func buildPack(path string, targetFile *os.File) {
 	pack := new(Pack)
 
 	packFile := unpackFile(targetFile)
-	fmt.Println("Name:", packFile.Name)
 
 	if len(packFile.Files) == 0 {
 		log.Fatal("no files in pack")
@@ -90,31 +161,42 @@ func buildPack(path string, targetFile *os.File) {
 
 		if !strings.HasPrefix(sharedFilePathAbs, sharedDirAbs) {
 			log.Fatal(
-				"bad pack " + packFile.Name + 
-				" file outside of file dir " + sharedFilePathAbs)
+				"bad pack " + packFile.Name +
+					" file outside of file dir " + sharedFilePathAbs)
 		}
 
 		relativePath := sharedFilePathAbs[len(sharedDirAbs):]
 		relativePath = strings.TrimLeft(relativePath, "/")
-		fmt.Println(relativePath)
+
 		sharedFile, err := os.Open(sharedFilePathAbs)
 		if err != nil {
 			log.Fatal(err)
 		}
-		sha256 := sha256File(sharedFile)
-		fmt.Println(sha256)
+
+		fileHash := sha256File(sharedFile)
 
 		pack.Files = append(pack.Files, relativePath)
-		pack.Hashes = append(pack.Hashes, sha256)
+		pack.Hashes = append(pack.Hashes, fileHash)
+		lastBlockHash := calculateChain(sharedFile)
+		pack.LastBlockHashes = append(pack.LastBlockHashes, lastBlockHash)
+	}
+
+	fmt.Println("=== PACK ===\n")
+	fmt.Println("Name:", pack.Name, "\n")
+	for i := 0; i < len(pack.Files); i++ {
+		fmt.Println("File:", pack.Files[i])
+		fmt.Println("Hash:", pack.Hashes[i])
+		fmt.Println("Last:", pack.LastBlockHashes[i])
+		fmt.Println()
 	}
 }
 
 func walker(path string, info os.FileInfo, err error) error {
-    if err != nil {
-        return err
-    }
+	if err != nil {
+		return err
+	}
 
-    if !info.IsDir() {
+	if !info.IsDir() {
 		targetFile, err := os.Open(path)
 		if err != nil {
 			log.Fatal(err)
@@ -126,8 +208,8 @@ func walker(path string, info os.FileInfo, err error) error {
 		}
 
 		buildPack(path, targetFile)
-    }
-    return nil
+	}
+	return nil
 }
 
 func main() {
@@ -142,6 +224,6 @@ func main() {
 	err = filepath.Walk(sharedDirAbs, walker)
 
 	if err != nil {
-	    log.Println(err)
+		log.Println(err)
 	}
 }
