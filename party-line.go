@@ -19,11 +19,16 @@ import (
 
 /*
 TODO:
-	scrolling
-	name color
+	check can't be invited to pending or current party
 	more statuses
 	advertise file
 	advertise shared file
+	name color
+	scrolling
+	better keys
+	cursor on input
+	sent scrollback
+	mute user
 */
 
 type Self struct {
