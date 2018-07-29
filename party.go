@@ -429,6 +429,14 @@ func processInvite(env *Envelope) {
 		return
 	}
 
+	_, inPending := pending[party.Id]
+	_, inParties := parties[party.Id]
+
+	if inPending || inParties {
+		setStatus("reinvite ignored for " + party.Id)
+		return
+	}
+
 	pending[party.Id] = party
 	setStatus(fmt.Sprintf("invite received for %s", party.Id))
 }

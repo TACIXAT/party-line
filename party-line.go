@@ -19,10 +19,9 @@ import (
 
 /*
 TODO:
-	check can't be invited to pending or current party
 	more statuses
-	advertise file
 	advertise shared file
+	advertise file
 	name color
 	scrolling
 	better keys
