@@ -170,8 +170,19 @@ func redrawChats() {
 }
 
 func handleChat(buf string) {
-	sendChat(buf)
-	setStatus("sent")
+	if show == "" || show == "mainline" {
+		sendChat(buf)
+		setStatus("sent")
+		return
+	}
+
+	for partyId, party := range parties {
+		if show == partyId {
+			party.SendChat(buf)
+			setStatus("sent")
+			return
+		}
+	}
 }
 
 func statusSetter(statusBox *termui.Par) {
@@ -455,6 +466,7 @@ func handleLeave(toks []string) {
 	}
 
 	parties[partyId].SendDisconnect()
+	setStatus("left the party " + partyId)
 }
 
 func handleHelp() {

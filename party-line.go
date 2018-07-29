@@ -19,7 +19,7 @@ import (
 
 /*
 TODO:
-	send default to channel if shown
+	scrolling
 	name color
 	more statuses
 	advertise file

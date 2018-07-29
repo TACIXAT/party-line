@@ -445,6 +445,7 @@ func acceptInvite(partyId string) {
 	delete(pending, partyId)
 	party.SendAnnounce()
 	parties[party.Id] = party
+	setStatus(fmt.Sprintf("accepted invite %s", party.Id))
 }
 
 func disconnectParties() {
