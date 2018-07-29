@@ -19,7 +19,9 @@ import (
 
 /*
 TODO:
-	private channel
+	send default to channel if shown
+	name color
+	more statuses
 	advertise file
 	advertise shared file
 */

@@ -366,16 +366,66 @@ func handleClear(toks []string) {
 	redrawChats()
 }
 
-func handleList() {
-	if len(parties) == 0 {
-		setStatus("error no parties to list")
+func handleList(toks []string) {
+	show := "both"
+	if len(toks) > 2 {
+		if strings.HasPrefix("invites", toks[1]) {
+			show = "invites"
+		} else if strings.HasPrefix("parties", toks[1]) {
+			show = "parties"
+		}
+	}
+
+	if show == "both" || show == "parties" {
+		chatStatus("      ==== PARTY LIST ====      ")
+		if len(parties) > 0 {
+			for id, _ := range parties {
+				chatStatus(fmt.Sprintf("%s", id))
+			}
+		} else {
+			chatStatus("           no parties           ")
+		}
+	}
+
+	if show == "both" || show == "parties" {
+		chatStatus("  ==== ACCEPTANCE PENDING ====  ")
+		if len(pending) > 0 {
+			for id, _ := range pending {
+				chatStatus(fmt.Sprintf("%s", id))
+			}
+		} else {
+			chatStatus("           no invites           ")
+		}
+	}
+}
+
+func handleAccept(toks []string) {
+	if len(toks) < 2 {
+		setStatus("error insufficient args to join command")
 		return
 	}
 
-	chatStatus("      ==== PARTY LIST ====      ")
-	for id, _ := range parties {
-		chatStatus(fmt.Sprintf("%s", id))
+	partyPrefix := toks[1]
+
+	// iterate pending
+	partyId := ""
+	for id, _ := range pending {
+		if strings.HasPrefix(id, partyPrefix) {
+			if partyId != "" {
+				setStatus(fmt.Sprintf(
+					"error multiple invites found for %s", partyPrefix))
+				return
+			}
+			partyId = id
+		}
 	}
+
+	if partyId == "" {
+		setStatus(fmt.Sprintf("error invite not found for %s", partyPrefix))
+		return
+	}
+
+	acceptInvite(partyId)
 }
 
 func handleLeave(toks []string) {
@@ -410,18 +460,20 @@ func handleLeave(toks []string) {
 func handleHelp() {
 	chatStatus("this is probably wildly out of date...")
 	chatStatus("/bs [bootstrap info]")
-	chatStatus("    list id (no arg) or bootstrap to a peer id")
+	chatStatus("    show bs info (no arg) or bootstrap to a peer")
 	chatStatus("/start <party_name>")
 	chatStatus("    start a party (name limit 8 characters)")
 	chatStatus("/invite <party_id> <user_id>")
 	chatStatus("    invite a user to a party (partial ids ok)")
-	chatStatus("/list")
-	chatStatus("    list party ids")
+	chatStatus("/accept <party_id>")
+	chatStatus("    accept an invite (partial ids ok)")
+	chatStatus("/list [parties|invites]")
+	chatStatus("    list parties, invites, or both")
 	chatStatus("/send <party_id> msg")
 	chatStatus("    send message to party (partial id ok)")
 	chatStatus("/leave <party_id>")
 	chatStatus("    leaves the party (partial id ok)")
-	chatStatus("/show <all|mainline|party_id>")
+	chatStatus("/show [all|mainline|party_id]")
 	chatStatus("    change what messages are displayed (partial id ok)")
 	chatStatus("/clear")
 	chatStatus("    clear chat log")
@@ -442,6 +494,7 @@ func handleUserInput(buf string) {
 	toks := strings.Split(buf, " ")
 	switch toks[0] {
 	case "/quit":
+		disconnectParties()
 		sendDisconnect()
 		termui.StopLoop()
 	case "/bs":
@@ -450,6 +503,8 @@ func handleUserInput(buf string) {
 		handleStart(toks)
 	case "/invite":
 		handleInvite(toks)
+	case "/accept":
+		handleAccept(toks)
 	case "/send":
 		handleSend(toks)
 	case "/leave":
@@ -463,7 +518,7 @@ func handleUserInput(buf string) {
 	case "/help":
 		handleHelp()
 	case "/list":
-		handleList()
+		handleList(toks)
 	default:
 		handleChat(buf)
 	}

@@ -13,9 +13,11 @@ import (
 )
 
 var parties map[string]*PartyLine
+var pending map[string]*PartyLine
 
 func init() {
 	parties = make(map[string]*PartyLine)
+	pending = make(map[string]*PartyLine)
 }
 
 type PartyLine struct {
@@ -427,8 +429,28 @@ func processInvite(env *Envelope) {
 		return
 	}
 
+	pending[party.Id] = party
+	setStatus(fmt.Sprintf("invite received for %s", party.Id))
+}
+
+func acceptInvite(partyId string) {
+	party := pending[partyId]
+
+	if _, joined := parties[partyId]; joined {
+		setStatus("error already joined party with id")
+		log.Println("party id in both pending and parties")
+		return
+	}
+
+	delete(pending, partyId)
 	party.SendAnnounce()
 	parties[party.Id] = party
+}
+
+func disconnectParties() {
+	for _, party := range parties {
+		party.SendDisconnect()
+	}
 }
 
 func minimum(a, b int) int {
