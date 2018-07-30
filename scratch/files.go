@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"strconv"
 )
 
 /*
@@ -77,6 +78,7 @@ func sha256Block(block *Block) string {
 	}
 
 	hash := sha256.New()
+	hash.Write([]byte(strconv.FormatUint(block.Index, 10)))
 	hash.Write([]byte(block.PrevBlockHash))
 	hash.Write([]byte(block.DataHash))
 	hash.Write(block.Data)
@@ -140,6 +142,12 @@ func calculateChain(targetFile *os.File) string {
 
 		prev = curr
 	}
+
+	// walk backward
+	// for curr := sha256Block(prev); curr != ""; curr = blocks[curr].PrevBlockHash {
+	// 	fmt.Println(curr)
+	// }
+	// fmt.Println()
 
 	return sha256Block(prev)
 }
