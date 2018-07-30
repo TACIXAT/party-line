@@ -28,20 +28,22 @@ type PackFile struct {
 	Files []string
 }
 
-type Pack struct {
-	Name            string
-	Files           []string
-	Hashes          []string
-	LastBlockHashes []string
+type PackFileInfo struct {
+	Name          string
+	Path          string
+	Hash          string
+	LastBlockHash string
+	Size          int64
+	Coverage      []uint64
 }
 
-type File struct {
-	Path     string
-	Sha256   string
-	Coverage []uint64
+type Pack struct {
+	Name  string
+	Files []*PackFileInfo
 }
 
 type Block struct {
+	Index         uint64
 	PrevBlockHash string
 	Data          []byte
 	DataHash      string
@@ -114,7 +116,8 @@ func calculateChain(targetFile *os.File) string {
 
 	blocks := make(map[string]*Block)
 
-	for {
+	var index uint64
+	for index = 0; true; index++ {
 		buffer := make([]byte, BUFFER_SIZE) // 10 KiB
 		bytesRead, err := targetFile.Read(buffer)
 		if err != nil {
@@ -127,6 +130,7 @@ func calculateChain(targetFile *os.File) string {
 		sha256Buffer := sha256Bytes(buffer[:bytesRead])
 
 		curr := new(Block)
+		curr.Index = index
 		curr.Data = buffer[:bytesRead]
 		curr.DataHash = sha256Buffer
 		curr.PrevBlockHash = sha256Block(prev)
@@ -138,6 +142,28 @@ func calculateChain(targetFile *os.File) string {
 	}
 
 	return sha256Block(prev)
+}
+
+func fullCoverage(size int64) []uint64 {
+	coverage := make([]uint64, 0)
+
+	var BUFFER_SIZE uint64 = 10240
+	var curr uint64 = 0
+	var i uint64 = 0
+	for i = 0; i*BUFFER_SIZE < uint64(size); i++ {
+		curr |= 1 << (i % 64)
+		if (i+1)%64 == 0 {
+			fmt.Println("adding", i)
+			coverage = append(coverage, curr)
+			curr = 0
+		}
+	}
+
+	if curr != 0 {
+		coverage = append(coverage, curr)
+	}
+
+	return coverage
 }
 
 func buildPack(path string, targetFile *os.File) {
@@ -174,19 +200,32 @@ func buildPack(path string, targetFile *os.File) {
 		}
 
 		fileHash := sha256File(sharedFile)
-
-		pack.Files = append(pack.Files, relativePath)
-		pack.Hashes = append(pack.Hashes, fileHash)
 		lastBlockHash := calculateChain(sharedFile)
-		pack.LastBlockHashes = append(pack.LastBlockHashes, lastBlockHash)
+		fileInfo, err := sharedFile.Stat()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		packFileInfo := new(PackFileInfo)
+		packFileInfo.Name = relativePath
+		packFileInfo.Path = sharedFilePathAbs
+		packFileInfo.Hash = fileHash
+		packFileInfo.LastBlockHash = lastBlockHash
+		packFileInfo.Size = fileInfo.Size()
+		packFileInfo.Coverage = fullCoverage(packFileInfo.Size)
+
+		pack.Files = append(pack.Files, packFileInfo)
 	}
 
 	fmt.Println("=== PACK ===\n")
 	fmt.Println("Name:", pack.Name, "\n")
 	for i := 0; i < len(pack.Files); i++ {
-		fmt.Println("File:", pack.Files[i])
-		fmt.Println("Hash:", pack.Hashes[i])
-		fmt.Println("Last:", pack.LastBlockHashes[i])
+		fmt.Println("Name:", pack.Files[i].Name)
+		fmt.Println("Hash:", pack.Files[i].Hash)
+		fmt.Println("Last:", pack.Files[i].LastBlockHash)
+		fmt.Println("Size:", pack.Files[i].Size)
+		fmt.Println("Path:", pack.Files[i].Path)
+		fmt.Println("Coverage:", pack.Files[i].Coverage)
 		fmt.Println()
 	}
 }
