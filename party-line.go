@@ -19,7 +19,6 @@ import (
 
 /*
 TODO:
-	reverse hash chain
 	more statuses
 	advertise shared file
 	advertise file

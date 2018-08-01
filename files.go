@@ -3,7 +3,9 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/mitchellh/go-homedir"
 	"io"
 	"io/ioutil"
 	"log"
@@ -62,19 +64,37 @@ type Block struct {
 
 var sharedDirAbs string
 
-func sha256File(targetFile *os.File) string {
+var sharedDir string
+
+var fullPacks map[string][]*Pack
+
+func init() {
+	home, err := homedir.Dir()
+	if err != nil {
+		log.Fatal("could not get home dir")
+	}
+	sharedDir = filepath.Join(home, "party-line")
+	os.MkdirAll(sharedDir, 0700)
+	fullPacks = make(map[string][]*Pack)
+}
+
+func sha256File(targetFile *os.File) (string, error) {
 	_, err := targetFile.Seek(0, 0)
 	if err != nil {
-		log.Fatal(err)
+		setStatus("error could not seek to start of file")
+		log.Println(err)
+		return "", err
 	}
 
 	h := sha256.New()
 	if _, err := io.Copy(h, targetFile); err != nil {
-		log.Fatal(err)
+		setStatus("error could not read file for hash")
+		log.Println(err)
+		return "", err
 	}
 
 	sha256 := fmt.Sprintf("%x", h.Sum(nil))
-	return sha256
+	return sha256, nil
 }
 
 func sha256Bytes(buffer []byte) string {
@@ -95,29 +115,36 @@ func sha256Block(block *Block) string {
 	return fmt.Sprintf("%x", hash.Sum(nil))
 }
 
-func unpackFile(targetFile *os.File) *PackFile {
+func unpackFile(targetFile *os.File) (*PackFile, error) {
 	_, err := targetFile.Seek(0, 0)
 	if err != nil {
-		log.Fatal(err)
+		setStatus("error seek to start of file for unpack")
+		log.Println(err)
+		return nil, err
 	}
 
 	contents, err := ioutil.ReadAll(targetFile)
 	if err != nil {
-		log.Fatal(err)
+		setStatus("error could not read file for unpack")
+		log.Println(err)
+		return nil, err
 	}
 
 	packFile := new(PackFile)
 	err = json.Unmarshal(contents, packFile)
 	if err != nil {
-		log.Fatal(err)
+		setStatus("error could not unmarshal json for unpack")
+		log.Println(err)
+		return nil, err
 	}
 
-	return packFile
+	return packFile, nil
 }
 
-func calculateChain(targetFile *os.File, size int64) string {
+func calculateChain(targetFile *os.File, size int64) (string, error) {
 	if size < 0 {
-		log.Fatal("size lt 0")
+		setStatus("error file size less than 0 (c'est une pipe?)")
+		return "", errors.New("file size less than 0")
 	}
 
 	var BUFFER_SIZE int64 = 10240
@@ -131,7 +158,9 @@ func calculateChain(targetFile *os.File, size int64) string {
 
 	_, err := targetFile.Seek(-lastBlockSize, 2)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		setStatus("error seek failed in file")
+		return "", errors.New("seek failed for file")
 	}
 
 	// read backward
@@ -139,7 +168,9 @@ func calculateChain(targetFile *os.File, size int64) string {
 		buffer := make([]byte, BUFFER_SIZE) // 10 KiB
 		bytesRead, err := targetFile.Read(buffer)
 		if err != nil && err != io.EOF {
-			log.Fatal(err)
+			log.Println(err)
+			setStatus("error failed read")
+			return "", errors.New("failed read of file")
 		}
 
 		sha256Buffer := sha256Bytes(buffer[:bytesRead])
@@ -160,7 +191,9 @@ func calculateChain(targetFile *os.File, size int64) string {
 
 	_, err = targetFile.Seek(0, 0)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		setStatus("error could not seek to beginning of file")
+		return "", errors.New("could not seek to beginning of file")
 	}
 
 	// test forward
@@ -170,7 +203,9 @@ func calculateChain(targetFile *os.File, size int64) string {
 		bytesRead, err := targetFile.Read(buffer)
 		if err != nil {
 			if err != io.EOF {
-				log.Fatal(err)
+				log.Println(err)
+				setStatus("error could not read file (verify)")
+				return "", errors.New("could not read file (verify)")
 			}
 			break
 		}
@@ -185,13 +220,15 @@ func calculateChain(targetFile *os.File, size int64) string {
 
 		verifyBlockHash := sha256Block(curr)
 		if verifyBlockHash != currBlockHash {
-			log.Fatal("Bad hash at " + strconv.FormatInt(int64(index), 10))
+			log.Println("Bad hash at " + strconv.FormatInt(int64(index), 10))
+			setStatus("error verify failed")
+			return "", errors.New("verify failed")
 		}
 
 		currBlockHash = curr.NextBlockHash
 	}
 
-	return sha256Block(prev)
+	return sha256Block(prev), nil
 }
 
 func fullCoverage(size int64) []uint64 {
@@ -216,13 +253,21 @@ func fullCoverage(size int64) []uint64 {
 	return coverage
 }
 
-func buildPack(path string, targetFile *os.File) {
+func buildPack(partyId string, path string, targetFile *os.File) {
+	partyDir := filepath.Join(sharedDir, partyId)
+
 	pack := new(Pack)
 
-	packFile := unpackFile(targetFile)
+	packFile, err := unpackFile(targetFile)
+	if err != nil {
+		log.Println(err)
+		setStatus("error unpacking pack file")
+		return
+	}
 
 	if len(packFile.Files) == 0 {
-		log.Fatal("no files in pack")
+		setStatus("error no files in pack")
+		return
 	}
 
 	pack.Name = packFile.Name
@@ -232,31 +277,47 @@ func buildPack(path string, targetFile *os.File) {
 		sharedFilePath := filepath.Join(dirPath, shortFilePath)
 		sharedFilePathAbs, err := filepath.Abs(sharedFilePath)
 		if err != nil {
-			log.Fatal(err)
+			log.Println(err)
+			setStatus("error could not get absolute path for file")
+			return
 		}
 
-		if !strings.HasPrefix(sharedFilePathAbs, sharedDirAbs) {
-			log.Fatal(
-				"bad pack " + packFile.Name +
-					" file outside of file dir " + sharedFilePathAbs)
+		if !strings.HasPrefix(sharedFilePathAbs, partyDir) {
+			setStatus("error pack file outside of channel dir")
+			return
 		}
 
-		relativePath := sharedFilePathAbs[len(sharedDirAbs):]
+		relativePath := sharedFilePathAbs[len(partyDir):]
 		relativePath = strings.TrimLeft(relativePath, "/")
 
 		sharedFile, err := os.Open(sharedFilePathAbs)
 		if err != nil {
-			log.Fatal(err)
+			setStatus("error opening file in pack")
+			log.Println(err)
+			return
 		}
 
 		fileInfo, err := sharedFile.Stat()
 		if err != nil {
-			log.Fatal(err)
+			setStatus("error getting file info for file in pack")
+			log.Println(err)
+			return
 		}
 
-		fileHash := sha256File(sharedFile)
+		fileHash, err := sha256File(sharedFile)
+		if err != nil {
+			log.Println(err)
+			setStatus("error hashing shared file")
+			return
+		}
+
 		sharedFileSize := fileInfo.Size()
-		firstBlockHash := calculateChain(sharedFile, sharedFileSize)
+		firstBlockHash, err := calculateChain(sharedFile, sharedFileSize)
+		if err != nil {
+			log.Println(err)
+			setStatus(err.Error())
+			return
+		}
 
 		packFileInfo := new(PackFileInfo)
 		packFileInfo.Name = relativePath
@@ -269,17 +330,7 @@ func buildPack(path string, targetFile *os.File) {
 		pack.Files = append(pack.Files, packFileInfo)
 	}
 
-	fmt.Println("=== PACK ===\n")
-	fmt.Println("Name:", pack.Name, "\n")
-	for i := 0; i < len(pack.Files); i++ {
-		fmt.Println("Name:", pack.Files[i].Name)
-		fmt.Println("Hash:", pack.Files[i].Hash)
-		fmt.Println("First:", pack.Files[i].FirstBlockHash)
-		fmt.Println("Size:", pack.Files[i].Size)
-		fmt.Println("Path:", pack.Files[i].Path)
-		fmt.Println("Coverage:", pack.Files[i].Coverage)
-		fmt.Println()
-	}
+	fullPacks[partyId] = append(fullPacks[partyId], pack)
 }
 
 func walker(path string, info os.FileInfo, err error) error {
@@ -287,34 +338,45 @@ func walker(path string, info os.FileInfo, err error) error {
 		return err
 	}
 
+	relPath := path[len(sharedDir):]
+	relPath = strings.TrimLeft(relPath, "/")
+	toks := strings.Split(relPath, "/")
+	if len(toks) < 1 {
+		setStatus("error bad path when walking")
+		return nil
+	}
+
+	partyId := toks[0]
+	chatStatus(partyId)
+
 	if !info.IsDir() {
 		targetFile, err := os.Open(path)
 		if err != nil {
-			log.Fatal(err)
+			setStatus("could not open files")
+			return nil
 		}
+
 		defer targetFile.Close()
 
 		if !strings.HasSuffix(path, ".pack") {
 			return nil
 		}
 
-		buildPack(path, targetFile)
+		buildPack(partyId, path, targetFile)
 	}
 	return nil
 }
 
-func main() {
-	fileDir := "shared"
-	var err error
-	sharedDirAbs, err = filepath.Abs(fileDir)
-	if err != nil {
-		log.Fatal(err)
-	}
+func runOccasionally() {
+	for partyId, _ := range parties {
+		targetDir := filepath.Join(sharedDir, partyId)
+		chatStatus(targetDir)
+		_, err := os.Stat(targetDir)
+		if err != nil {
+			continue
+		}
 
-	fmt.Println("target:", sharedDirAbs)
-	err = filepath.Walk(sharedDirAbs, walker)
+		err = filepath.Walk(targetDir, walker)
 
-	if err != nil {
-		log.Println(err)
 	}
 }

@@ -527,6 +527,8 @@ func handleUserInput(buf string) {
 		handleClear(toks)
 	case "/ids":
 		handleIds(toks)
+	case "/files":
+		runOccasionally()
 	case "/help":
 		handleHelp()
 	case "/list":
