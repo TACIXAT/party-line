@@ -9,19 +9,21 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"strconv"
+	"strings"
 )
 
 /*
 	peers send signed packs
 	client show packs with sig counts
 	user selects a pack
-	user requests file(s) from pack
+	user requests pack
+	downloads/party-line/channel is created if not present
+	*https://github.com/mitchellh/go-homedir os.Join(homedir.Dir(), "party-line", channel)
 	pieces come in
 	client constructs chains
 		map[hash of block] block
-		block { hash of next block }
+		as blocks are verified they are written to disk
 */
 
 type PackFile struct {
@@ -30,12 +32,12 @@ type PackFile struct {
 }
 
 type PackFileInfo struct {
-	Name          string
-	Path          string
-	Hash          string
-	LastBlockHash string
-	Size          int64
-	Coverage      []uint64
+	Name           string
+	Path           string
+	Hash           string
+	FirstBlockHash string
+	Size           int64
+	Coverage       []uint64
 }
 
 type Pack struct {
@@ -45,7 +47,7 @@ type Pack struct {
 
 type Block struct {
 	Index         uint64
-	PrevBlockHash string
+	NextBlockHash string
 	Data          []byte
 	DataHash      string
 }
@@ -79,7 +81,7 @@ func sha256Block(block *Block) string {
 
 	hash := sha256.New()
 	hash.Write([]byte(strconv.FormatUint(block.Index, 10)))
-	hash.Write([]byte(block.PrevBlockHash))
+	hash.Write([]byte(block.NextBlockHash))
 	hash.Write([]byte(block.DataHash))
 	hash.Write(block.Data)
 	return fmt.Sprintf("%x", hash.Sum(nil))
@@ -105,21 +107,57 @@ func unpackFile(targetFile *os.File) *PackFile {
 	return packFile
 }
 
-func calculateChain(targetFile *os.File) string {
-	_, err := targetFile.Seek(0, 0)
-	if err != nil {
-		log.Fatal(err)
+func calculateChain(targetFile *os.File, size int64) string {
+	if size < 0 {
+		log.Fatal("size lt 0")
 	}
 
-	BUFFER_SIZE := 10240
+	var BUFFER_SIZE int64 = 10240
 
 	var prev *Block
 	prev = nil
 
 	blocks := make(map[string]*Block)
+	lastBlockSize := size % BUFFER_SIZE
+	index := size / BUFFER_SIZE
 
-	var index uint64
-	for index = 0; true; index++ {
+	_, err := targetFile.Seek(-lastBlockSize, 2)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// read backward
+	for index > -1 {
+		buffer := make([]byte, BUFFER_SIZE) // 10 KiB
+		bytesRead, err := targetFile.Read(buffer)
+		if err != nil && err != io.EOF {
+			log.Fatal(err)
+		}
+
+		sha256Buffer := sha256Bytes(buffer[:bytesRead])
+
+		curr := new(Block)
+		curr.Index = uint64(index)
+		curr.Data = buffer[:bytesRead]
+		curr.DataHash = sha256Buffer
+		curr.NextBlockHash = sha256Block(prev)
+
+		blockHash := sha256Block(curr)
+		blocks[blockHash] = curr
+
+		prev = curr
+		index--
+		_, err = targetFile.Seek(-(int64(bytesRead) + BUFFER_SIZE), 1)
+	}
+
+	_, err = targetFile.Seek(0, 0)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// test forward
+	currBlockHash := sha256Block(prev)
+	for index := 0; true; index++ {
 		buffer := make([]byte, BUFFER_SIZE) // 10 KiB
 		bytesRead, err := targetFile.Read(buffer)
 		if err != nil {
@@ -132,22 +170,18 @@ func calculateChain(targetFile *os.File) string {
 		sha256Buffer := sha256Bytes(buffer[:bytesRead])
 
 		curr := new(Block)
-		curr.Index = index
+		curr.Index = uint64(index)
 		curr.Data = buffer[:bytesRead]
 		curr.DataHash = sha256Buffer
-		curr.PrevBlockHash = sha256Block(prev)
+		curr.NextBlockHash = blocks[currBlockHash].NextBlockHash
 
-		blockHash := sha256Block(curr)
-		blocks[blockHash] = curr
+		verifyBlockHash := sha256Block(curr)
+		if verifyBlockHash != currBlockHash {
+			log.Fatal("Bad hash at " + strconv.FormatInt(int64(index), 10))
+		}
 
-		prev = curr
+		currBlockHash = curr.NextBlockHash
 	}
-
-	// walk backward
-	// for curr := sha256Block(prev); curr != ""; curr = blocks[curr].PrevBlockHash {
-	// 	fmt.Println(curr)
-	// }
-	// fmt.Println()
 
 	return sha256Block(prev)
 }
@@ -207,19 +241,21 @@ func buildPack(path string, targetFile *os.File) {
 			log.Fatal(err)
 		}
 
-		fileHash := sha256File(sharedFile)
-		lastBlockHash := calculateChain(sharedFile)
 		fileInfo, err := sharedFile.Stat()
 		if err != nil {
 			log.Fatal(err)
 		}
 
+		fileHash := sha256File(sharedFile)
+		sharedFileSize := fileInfo.Size()
+		firstBlockHash := calculateChain(sharedFile, sharedFileSize)
+
 		packFileInfo := new(PackFileInfo)
 		packFileInfo.Name = relativePath
 		packFileInfo.Path = sharedFilePathAbs
 		packFileInfo.Hash = fileHash
-		packFileInfo.LastBlockHash = lastBlockHash
-		packFileInfo.Size = fileInfo.Size()
+		packFileInfo.FirstBlockHash = firstBlockHash
+		packFileInfo.Size = sharedFileSize
 		packFileInfo.Coverage = fullCoverage(packFileInfo.Size)
 
 		pack.Files = append(pack.Files, packFileInfo)
@@ -230,7 +266,7 @@ func buildPack(path string, targetFile *os.File) {
 	for i := 0; i < len(pack.Files); i++ {
 		fmt.Println("Name:", pack.Files[i].Name)
 		fmt.Println("Hash:", pack.Files[i].Hash)
-		fmt.Println("Last:", pack.Files[i].LastBlockHash)
+		fmt.Println("First:", pack.Files[i].FirstBlockHash)
 		fmt.Println("Size:", pack.Files[i].Size)
 		fmt.Println("Path:", pack.Files[i].Path)
 		fmt.Println("Coverage:", pack.Files[i].Coverage)
