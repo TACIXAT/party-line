@@ -56,6 +56,11 @@ type Pack struct {
 	Files []*PackFileInfo
 }
 
+type AvailablePack struct {
+	Pack  *Pack
+	Peers map[string]time.Time
+}
+
 type Block struct {
 	Index         uint64
 	NextBlockHash string

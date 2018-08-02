@@ -60,11 +60,6 @@ type PartyAdvertisement struct {
 	Pack    Pack
 }
 
-type AvailablePack struct {
-	Pack  *Pack
-	Peers map[string]time.Time
-}
-
 func modFloor(i, m int) int {
 	return ((i % m) + m) % m
 }

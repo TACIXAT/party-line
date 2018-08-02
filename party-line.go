@@ -19,9 +19,13 @@ import (
 
 /*
 TODO:
+	specify download folder
+	show packs (owned / available)
+	download pack
+	request file (coverage)
+	partial packs
+
 	more statuses
-	advertise shared file
-	advertise file
 	name color
 	scrolling
 	better keys
