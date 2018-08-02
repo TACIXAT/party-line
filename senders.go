@@ -249,7 +249,7 @@ func sendChat(msg string) {
 
 	msgChat := MessageChat{
 		Message: msg,
-		Time:    time.Now(),
+		Time:    time.Now().UTC(),
 		Min:     peerSelf.Min()}
 
 	jsonChat, err := json.Marshal(msgChat)
@@ -318,7 +318,7 @@ func sendDisconnect() {
 
 	disconnect := MessageTime{
 		MessageType: -1,
-		Time:        time.Now()}
+		Time:        time.Now().UTC()}
 
 	jsonDisconnect, err := json.Marshal(disconnect)
 	if err != nil {
@@ -343,7 +343,7 @@ func sendPings() {
 		ping := MessagePing{
 			Min:         peerSelf.Min(),
 			MessageType: 0,
-			Time:        time.Now()}
+			Time:        time.Now().UTC()}
 
 		jsonPing, err := json.Marshal(ping)
 		if err != nil {
@@ -384,7 +384,7 @@ func sendPulse(min MinPeer) {
 
 	pulse := MessageTime{
 		MessageType: 1,
-		Time:        time.Now()}
+		Time:        time.Now().UTC()}
 
 	jsonPulse, err := json.Marshal(pulse)
 	if err != nil {

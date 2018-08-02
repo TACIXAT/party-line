@@ -21,9 +21,11 @@ func init() {
 }
 
 type PartyLine struct {
-	MinList   map[string]int
-	SeenChats map[string]bool
-	Id        string
+	MinList        map[string]int
+	SeenChats      map[string]bool
+	Id             string
+	FullPacks      map[string]*Pack
+	AvailablePacks map[string]*AvailablePack
 }
 
 type PartyEnvelope struct {
@@ -49,6 +51,18 @@ type PartyDisconnect struct {
 	PeerId  string
 	PartyId string
 	Time    time.Time
+}
+
+type PartyAdvertisement struct {
+	PeerId  string
+	PartyId string
+	Hash    string
+	Pack    Pack
+}
+
+type AvailablePack struct {
+	Pack  *Pack
+	Peers map[string]time.Time
 }
 
 func modFloor(i, m int) int {
@@ -207,7 +221,7 @@ func (party *PartyLine) SendChat(message string) {
 		PeerId:  peerSelf.Id(),
 		PartyId: party.Id,
 		Message: message,
-		Time:    time.Now()}
+		Time:    time.Now().UTC()}
 
 	jsonPartyChat, err := json.Marshal(partyChat)
 	if err != nil {
@@ -224,7 +238,7 @@ func (party *PartyLine) SendDisconnect() {
 	partyDisconnect := PartyDisconnect{
 		PeerId:  peerSelf.Id(),
 		PartyId: party.Id,
-		Time:    time.Now()}
+		Time:    time.Now().UTC()}
 
 	jsonPartyDisconnect, err := json.Marshal(partyDisconnect)
 	if err != nil {
@@ -236,6 +250,73 @@ func (party *PartyLine) SendDisconnect() {
 
 	signedPartyDisconnect := sign.Sign([]byte(jsonPartyDisconnect), self.SignPrv)
 	party.sendToNeighbors("disconnect", signedPartyDisconnect)
+}
+
+func (party *PartyLine) SendAdvertisement(packSha256 string, pack *Pack) {
+	partyAdvertisement := PartyAdvertisement{
+		PeerId:  peerSelf.Id(),
+		PartyId: party.Id,
+		Hash:    packSha256,
+		Pack:    *pack}
+
+	jsonPartyAdvertisement, err := json.Marshal(partyAdvertisement)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	signedPartyAdvertisement := sign.Sign([]byte(jsonPartyAdvertisement), self.SignPrv)
+
+	party.sendToNeighbors("ad", signedPartyAdvertisement)
+}
+
+func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
+	signedPartyAdvertisement := partyEnv.Data
+	jsonPartyAdvertisement := signedPartyAdvertisement[sign.SignatureSize:]
+
+	partyAdvertisement := new(PartyAdvertisement)
+	err := json.Unmarshal(jsonPartyAdvertisement, partyAdvertisement)
+	if err != nil {
+		log.Println(err)
+		setStatus("error invalid json (party:ad)")
+		return
+	}
+
+	if party.Id != partyAdvertisement.PartyId {
+		setStatus("error invalid party id for (party:ad)")
+		return
+	}
+
+	min, err := idToMin(partyAdvertisement.PeerId)
+	if err != nil {
+		setStatus("error bad id (party:ad)")
+		return
+	}
+
+	verified := sign.Verify(signedPartyAdvertisement, min.SignPub)
+	if !verified {
+		setStatus("error questionable message integrity (party:ad)")
+		return
+	}
+
+	pack := new(Pack)
+	*pack = partyAdvertisement.Pack
+
+	hash := partyAdvertisement.Hash
+	if hash != sha256Pack(pack) {
+		setStatus("error bad pack hash (party:ad)")
+		return
+	}
+
+	availablePack, ok := party.AvailablePacks[hash]
+	if ok {
+		availablePack.Peers[min.Id()] = time.Now().UTC()
+	} else {
+		availablePack = new(AvailablePack)
+		availablePack.Pack = pack
+		availablePack.Peers = make(map[string]time.Time)
+		party.AvailablePacks[hash] = availablePack
+	}
 }
 
 func (party *PartyLine) ProcessChat(partyEnv *PartyEnvelope) {
@@ -273,7 +354,7 @@ func (party *PartyLine) ProcessChat(partyEnv *PartyEnvelope) {
 		party.SeenChats[chatId] = true
 
 		chat := Chat{
-			Time:    time.Now(),
+			Time:    time.Now().UTC(),
 			Id:      partyChat.PeerId,
 			Channel: party.Id,
 			Message: partyChat.Message}
@@ -456,6 +537,18 @@ func acceptInvite(partyId string) {
 	setStatus(fmt.Sprintf("accepted invite %s", party.Id))
 }
 
+func (party *PartyLine) AdvertisePacks() {
+	for packSha256, pack := range party.FullPacks {
+		party.SendAdvertisement(packSha256, pack)
+	}
+}
+
+func advertiseAll() {
+	for _, party := range parties {
+		party.AdvertisePacks()
+	}
+}
+
 func disconnectParties() {
 	for _, party := range parties {
 		party.SendDisconnect()
@@ -481,6 +574,8 @@ func partyStart(name string) string {
 	party.Id = name + idHex[:len(idHex)-len(name)]
 	party.MinList = make(map[string]int)
 	party.SeenChats = make(map[string]bool)
+	party.FullPacks = make(map[string]*Pack)
+	party.AvailablePacks = make(map[string]*AvailablePack)
 
 	party.MinList[peerSelf.Id()] = 0
 

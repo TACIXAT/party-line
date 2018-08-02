@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -36,18 +37,18 @@ import (
 		as blocks are verified they are written to disk
 */
 
-type PackFile struct {
+type DotPack struct {
 	Name  string
 	Files []string
 }
 
 type PackFileInfo struct {
 	Name           string
-	Path           string
+	Path           string `json:"-"`
 	Hash           string
 	FirstBlockHash string
 	Size           int64
-	Coverage       []uint64
+	Coverage       []uint64 `json:"-"`
 }
 
 type Pack struct {
@@ -62,11 +63,9 @@ type Block struct {
 	DataHash      string
 }
 
-var sharedDirAbs string
-
 var sharedDir string
 
-var fullPacks map[string][]*Pack
+const BUFFER_SIZE = 10240
 
 func init() {
 	home, err := homedir.Dir()
@@ -75,7 +74,37 @@ func init() {
 	}
 	sharedDir = filepath.Join(home, "party-line")
 	os.MkdirAll(sharedDir, 0700)
-	fullPacks = make(map[string][]*Pack)
+}
+
+type ByFileName []*PackFileInfo
+
+func (packFileInfo ByFileName) Len() int {
+	return len(packFileInfo)
+}
+
+func (packFileInfo ByFileName) Swap(i, j int) {
+	packFileInfo[i], packFileInfo[j] = packFileInfo[j], packFileInfo[i]
+}
+
+func (packFileInfo ByFileName) Less(i, j int) bool {
+	return packFileInfo[i].Name < packFileInfo[j].Name
+}
+
+func sha256Pack(pack *Pack) string {
+	if pack == nil {
+		return ""
+	}
+
+	sort.Sort(ByFileName(pack.Files))
+
+	hash := sha256.New()
+	hash.Write([]byte(pack.Name))
+	for _, packFileInfo := range pack.Files {
+		hash.Write([]byte(packFileInfo.Hash))
+		hash.Write([]byte(packFileInfo.FirstBlockHash))
+		hash.Write([]byte(strconv.FormatInt(packFileInfo.Size, 10)))
+	}
+	return fmt.Sprintf("%x", hash.Sum(nil))
 }
 
 func sha256File(targetFile *os.File) (string, error) {
@@ -115,7 +144,7 @@ func sha256Block(block *Block) string {
 	return fmt.Sprintf("%x", hash.Sum(nil))
 }
 
-func unpackFile(targetFile *os.File) (*PackFile, error) {
+func unpackFile(targetFile *os.File) (*DotPack, error) {
 	_, err := targetFile.Seek(0, 0)
 	if err != nil {
 		setStatus("error seek to start of file for unpack")
@@ -130,15 +159,15 @@ func unpackFile(targetFile *os.File) (*PackFile, error) {
 		return nil, err
 	}
 
-	packFile := new(PackFile)
-	err = json.Unmarshal(contents, packFile)
+	dotPack := new(DotPack)
+	err = json.Unmarshal(contents, dotPack)
 	if err != nil {
 		setStatus("error could not unmarshal json for unpack")
 		log.Println(err)
 		return nil, err
 	}
 
-	return packFile, nil
+	return dotPack, nil
 }
 
 func calculateChain(targetFile *os.File, size int64) (string, error) {
@@ -146,8 +175,6 @@ func calculateChain(targetFile *os.File, size int64) (string, error) {
 		setStatus("error file size less than 0 (c'est une pipe?)")
 		return "", errors.New("file size less than 0")
 	}
-
-	var BUFFER_SIZE int64 = 10240
 
 	var prev *Block
 	prev = nil
@@ -234,7 +261,6 @@ func calculateChain(targetFile *os.File, size int64) (string, error) {
 func fullCoverage(size int64) []uint64 {
 	coverage := make([]uint64, 0)
 
-	var BUFFER_SIZE uint64 = 10240
 	var curr uint64 = 0
 	var i uint64 = 0
 	for i = 0; i*BUFFER_SIZE < uint64(size); i++ {
@@ -258,22 +284,22 @@ func buildPack(partyId string, path string, targetFile *os.File) {
 
 	pack := new(Pack)
 
-	packFile, err := unpackFile(targetFile)
+	dotPack, err := unpackFile(targetFile)
 	if err != nil {
 		log.Println(err)
 		setStatus("error unpacking pack file")
 		return
 	}
 
-	if len(packFile.Files) == 0 {
+	if len(dotPack.Files) == 0 {
 		setStatus("error no files in pack")
 		return
 	}
 
-	pack.Name = packFile.Name
+	pack.Name = dotPack.Name
 
 	dirPath := filepath.Dir(path)
-	for _, shortFilePath := range packFile.Files {
+	for _, shortFilePath := range dotPack.Files {
 		sharedFilePath := filepath.Join(dirPath, shortFilePath)
 		sharedFilePathAbs, err := filepath.Abs(sharedFilePath)
 		if err != nil {
@@ -330,7 +356,8 @@ func buildPack(partyId string, path string, targetFile *os.File) {
 		pack.Files = append(pack.Files, packFileInfo)
 	}
 
-	fullPacks[partyId] = append(fullPacks[partyId], pack)
+	sort.Sort(ByFileName(pack.Files))
+	parties[partyId].FullPacks[sha256Pack(pack)] = pack
 }
 
 func walker(path string, info os.FileInfo, err error) error {
