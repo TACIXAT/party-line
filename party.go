@@ -56,6 +56,7 @@ type PartyDisconnect struct {
 type PartyAdvertisement struct {
 	PeerId  string
 	PartyId string
+	Time    time.Time
 	Hash    string
 	Pack    Pack
 }
@@ -251,6 +252,7 @@ func (party *PartyLine) SendAdvertisement(packSha256 string, pack *Pack) {
 	partyAdvertisement := PartyAdvertisement{
 		PeerId:  peerSelf.Id(),
 		PartyId: party.Id,
+		Time:    time.Now().UTC(),
 		Hash:    packSha256,
 		Pack:    *pack}
 
@@ -266,6 +268,7 @@ func (party *PartyLine) SendAdvertisement(packSha256 string, pack *Pack) {
 }
 
 func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
+	chatStatus("Got advertisement")
 	signedPartyAdvertisement := partyEnv.Data
 	jsonPartyAdvertisement := signedPartyAdvertisement[sign.SignatureSize:]
 
@@ -304,14 +307,23 @@ func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
 	}
 
 	availablePack, ok := party.AvailablePacks[hash]
-	if ok {
-		availablePack.Peers[min.Id()] = time.Now().UTC()
-	} else {
+	if !ok {
 		availablePack = new(AvailablePack)
 		availablePack.Pack = pack
 		availablePack.Peers = make(map[string]time.Time)
 		party.AvailablePacks[hash] = availablePack
 	}
+
+	adTime := partyAdvertisement.Time
+	peerTime, ok := availablePack.Peers[min.Id()]
+	if !ok || peerTime.Before(adTime) {
+		if adTime.Sub(peerTime) > 30*time.Second {
+			party.sendToNeighbors("ad", signedPartyAdvertisement)
+		}
+		availablePack.Peers[min.Id()] = adTime
+	}
+
+	chatStatus("Got pack " + pack.Name)
 }
 
 func (party *PartyLine) ProcessChat(partyEnv *PartyEnvelope) {
@@ -467,6 +479,8 @@ func processParty(env *Envelope) {
 	}
 
 	switch partyEnv.Type {
+	case "ad":
+		party.ProcessAdvertisement(partyEnv)
 	case "announce":
 		party.ProcessAnnounce(partyEnv)
 	case "chat":
@@ -534,6 +548,7 @@ func acceptInvite(partyId string) {
 
 func (party *PartyLine) AdvertisePacks() {
 	for packSha256, pack := range party.FullPacks {
+		chatStatus(pack.Name)
 		party.SendAdvertisement(packSha256, pack)
 	}
 }

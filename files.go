@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 /*
@@ -72,13 +73,20 @@ var sharedDir string
 
 const BUFFER_SIZE = 10240
 
-func init() {
-	home, err := homedir.Dir()
-	if err != nil {
-		log.Fatal("could not get home dir")
+func initFiles() {
+	if *shareFlag != "" {
+		sharedDir = *shareFlag
+	} else {
+		home, err := homedir.Dir()
+		if err != nil {
+			log.Fatal("could not get home dir")
+		}
+		sharedDir = filepath.Join(home, "party-line")
 	}
-	sharedDir = filepath.Join(home, "party-line")
-	os.MkdirAll(sharedDir, 0700)
+	err := os.MkdirAll(sharedDir, 0700)
+	if err != nil {
+		log.Fatal("could not create shared dir")
+	}
 }
 
 type ByFileName []*PackFileInfo
@@ -379,8 +387,6 @@ func walker(path string, info os.FileInfo, err error) error {
 	}
 
 	partyId := toks[0]
-	chatStatus(partyId)
-
 	if !info.IsDir() {
 		targetFile, err := os.Open(path)
 		if err != nil {
@@ -402,6 +408,9 @@ func walker(path string, info os.FileInfo, err error) error {
 func runOccasionally() {
 	for partyId, _ := range parties {
 		targetDir := filepath.Join(sharedDir, partyId)
+		chatStatus("party -- ")
+		chatStatus(sharedDir)
+		chatStatus(partyId)
 		chatStatus(targetDir)
 		_, err := os.Stat(targetDir)
 		if err != nil {
@@ -409,6 +418,6 @@ func runOccasionally() {
 		}
 
 		err = filepath.Walk(targetDir, walker)
-
 	}
+	advertiseAll()
 }

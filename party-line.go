@@ -19,7 +19,6 @@ import (
 
 /*
 TODO:
-	specify download folder
 	show packs (owned / available)
 	download pack
 	request file (coverage)
@@ -222,13 +221,18 @@ var debugFlag *bool
 var portFlag *uint
 var ipFlag *string
 var nonatFlag *bool
+var shareFlag *string
 
 func main() {
+
 	debugFlag = flag.Bool("debug", false, "Debug.")
 	portFlag = flag.Uint("port", 3499, "Port.")
 	ipFlag = flag.String("ip", "", "Manually set external IP.")
 	nonatFlag = flag.Bool("nonat", false, "Disable UPNP and PMP.")
+	shareFlag = flag.String("share", "", "Base directory to share from.")
 	flag.Parse()
+
+	initFiles()
 
 	// get port
 	var port uint16 = uint16(*portFlag)
