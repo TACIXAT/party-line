@@ -469,6 +469,28 @@ func handleLeave(toks []string) {
 	setStatus("left the party " + partyId)
 }
 
+func handlePacks(toks []string) {
+	if len(toks) < 2 {
+		setStatus("error insufficient args to packs command")
+		return
+	}
+
+	for partyId, party := range parties {
+		chatStatus("== " + partyId + " ==")
+		for packHash, availablePack := range party.AvailablePacks {
+			_, haveFull := party.FullPacks[packHash]
+			line := availablePack.Pack.Name
+			// TODO: change to count in last TIME
+			line += " (" + strconv.FormatInt(int64(len(availablePack.Peers)), 10) + ")"
+			if haveFull {
+				line += "*"
+			}
+			chatStatus(line)
+		}
+
+	}
+}
+
 func handleHelp() {
 	chatStatus("this is probably wildly out of date...")
 	chatStatus("/bs [bootstrap info]")
@@ -529,6 +551,8 @@ func handleUserInput(buf string) {
 		handleIds(toks)
 	case "/files":
 		runOccasionally()
+	case "/packs":
+		handlePacks(toks)
 	case "/help":
 		handleHelp()
 	case "/list":

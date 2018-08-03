@@ -268,7 +268,6 @@ func (party *PartyLine) SendAdvertisement(packSha256 string, pack *Pack) {
 }
 
 func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
-	chatStatus("Got advertisement")
 	signedPartyAdvertisement := partyEnv.Data
 	jsonPartyAdvertisement := signedPartyAdvertisement[sign.SignatureSize:]
 
@@ -322,8 +321,6 @@ func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
 		}
 		availablePack.Peers[min.Id()] = adTime
 	}
-
-	chatStatus("Got pack " + pack.Name)
 }
 
 func (party *PartyLine) ProcessChat(partyEnv *PartyEnvelope) {
@@ -548,7 +545,6 @@ func acceptInvite(partyId string) {
 
 func (party *PartyLine) AdvertisePacks() {
 	for packSha256, pack := range party.FullPacks {
-		chatStatus(pack.Name)
 		party.SendAdvertisement(packSha256, pack)
 	}
 }

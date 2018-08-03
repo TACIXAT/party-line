@@ -408,10 +408,6 @@ func walker(path string, info os.FileInfo, err error) error {
 func runOccasionally() {
 	for partyId, _ := range parties {
 		targetDir := filepath.Join(sharedDir, partyId)
-		chatStatus("party -- ")
-		chatStatus(sharedDir)
-		chatStatus(partyId)
-		chatStatus(targetDir)
 		_, err := os.Stat(targetDir)
 		if err != nil {
 			continue
