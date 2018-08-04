@@ -470,22 +470,29 @@ func handleLeave(toks []string) {
 }
 
 func handlePacks(toks []string) {
-	if len(toks) < 2 {
-		setStatus("error insufficient args to packs command")
-		return
-	}
-
 	for partyId, party := range parties {
+		for packsHash, pack := range party.FullPacks {
+			chatStatus("FULL ??? " + pack.Name)
+			chatStatus("FULL ??? " + packsHash)
+		}
+
 		chatStatus("== " + partyId + " ==")
 		for packHash, availablePack := range party.AvailablePacks {
-			_, haveFull := party.FullPacks[packHash]
-			line := availablePack.Pack.Name
+			line := "\"" + availablePack.Pack.Name + "\""
 			// TODO: change to count in last TIME
 			line += " (" + strconv.FormatInt(int64(len(availablePack.Peers)), 10) + ")"
+			
+			_, haveFull := party.FullPacks[packHash]
 			if haveFull {
 				line += "*"
 			}
+			chatStatus("PACK: " + packHash)
 			chatStatus(line)
+
+			for _, packFileInfo := range availablePack.Pack.Files {
+				chatStatus("  FILE: " + packFileInfo.Hash)
+				chatStatus("  \"" + packFileInfo.Name + "\"")
+			}
 		}
 
 	}

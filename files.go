@@ -31,7 +31,6 @@ import (
 	user selects a pack
 	user requests pack
 	downloads/party-line/channel is created if not present
-	*https://github.com/mitchellh/go-homedir os.Join(homedir.Dir(), "party-line", channel)
 	pieces come in
 	client constructs chains
 		map[hash of block] block
@@ -74,7 +73,7 @@ var sharedDir string
 const BUFFER_SIZE = 10240
 
 func initFiles() {
-	if *shareFlag != "" {
+	if shareFlag != nil && *shareFlag != "" {
 		sharedDir = *shareFlag
 	} else {
 		home, err := homedir.Dir()
@@ -83,10 +82,13 @@ func initFiles() {
 		}
 		sharedDir = filepath.Join(home, "party-line")
 	}
+
 	err := os.MkdirAll(sharedDir, 0700)
 	if err != nil {
 		log.Fatal("could not create shared dir")
 	}
+
+	fmt.Println("sharing", sharedDir)
 }
 
 type ByFileName []*PackFileInfo
@@ -370,7 +372,16 @@ func buildPack(partyId string, path string, targetFile *os.File) {
 	}
 
 	sort.Sort(ByFileName(pack.Files))
-	parties[partyId].FullPacks[sha256Pack(pack)] = pack
+	packHash := sha256Pack(pack)
+
+	chatStatus("Adding full pack " + pack.Name)
+	parties[partyId].FullPacks[packHash] = pack
+
+	availablePack := new(AvailablePack)
+	availablePack.Pack = pack
+	availablePack.Peers = make(map[string]time.Time)
+	availablePack.Peers[peerSelf.Id()] = time.Now().UTC()
+	parties[partyId].AvailablePacks[packHash] = availablePack
 }
 
 func walker(path string, info os.FileInfo, err error) error {
@@ -408,6 +419,8 @@ func walker(path string, info os.FileInfo, err error) error {
 func runOccasionally() {
 	for partyId, _ := range parties {
 		targetDir := filepath.Join(sharedDir, partyId)
+		chatStatus("walking " + targetDir)
+
 		_, err := os.Stat(targetDir)
 		if err != nil {
 			continue
