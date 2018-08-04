@@ -69,6 +69,7 @@ type Block struct {
 }
 
 var sharedDir string
+var fileMod map[string]time.Time
 
 const BUFFER_SIZE = 10240
 
@@ -89,6 +90,7 @@ func initFiles() {
 	}
 
 	fmt.Println("sharing", sharedDir)
+	fileMod = make(map[string]time.Time)
 }
 
 type ByFileName []*PackFileInfo
@@ -294,8 +296,6 @@ func fullCoverage(size int64) []uint64 {
 	return coverage
 }
 
-var fileSeen map[string]time.Time
-
 func fresh(packPath string, dotPack *DotPack) bool {
 	packInfo, err := os.Stat(packPath)
 	if err != nil {
@@ -304,7 +304,7 @@ func fresh(packPath string, dotPack *DotPack) bool {
 		return false
 	}
 
-	modTime, seen := fileSeen[packPath]
+	modTime, seen := fileMod[packPath]
 	if !seen || modTime != packInfo.ModTime() {
 		return true
 	}
@@ -326,7 +326,7 @@ func fresh(packPath string, dotPack *DotPack) bool {
 			return false
 		}
 
-		modTime, seen := fileSeen[sharedFilePathAbs]
+		modTime, seen := fileMod[sharedFilePathAbs]
 		if !seen || modTime != fileInfo.ModTime() {
 			return true
 		}
@@ -364,7 +364,7 @@ func buildPack(partyId string, path string, targetFile *os.File) {
 		return
 	}
 
-	fileSeen[path] = packInfo.ModTime()
+	fileMod[path] = packInfo.ModTime()
 
 	pack.Name = dotPack.Name
 
@@ -425,7 +425,7 @@ func buildPack(partyId string, path string, targetFile *os.File) {
 
 		pack.Files = append(pack.Files, packFileInfo)
 
-		fileSeen[sharedFilePathAbs] = fileInfo.ModTime()
+		fileMod[sharedFilePathAbs] = fileInfo.ModTime()
 	}
 
 	sort.Sort(ByFileName(pack.Files))
