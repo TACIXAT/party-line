@@ -19,7 +19,9 @@ import (
 
 /*
 TODO:
-	show packs (owned / available)
+	auto discover packs
+	auto advertise packs
+
 	download pack
 	request file (coverage)
 	partial packs
