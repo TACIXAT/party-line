@@ -24,6 +24,7 @@ TODO:
 	request file (coverage)
 	partial packs
 
+	check fields for shit that gets marshalled
 	more statuses
 	name color
 	scrolling

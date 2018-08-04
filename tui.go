@@ -471,21 +471,17 @@ func handleLeave(toks []string) {
 
 func handlePacks(toks []string) {
 	for partyId, party := range parties {
-		for packsHash, pack := range party.FullPacks {
-			chatStatus("FULL ??? " + pack.Name)
-			chatStatus("FULL ??? " + packsHash)
-		}
-
 		chatStatus("== " + partyId + " ==")
 		for packHash, availablePack := range party.AvailablePacks {
 			line := "\"" + availablePack.Pack.Name + "\""
 			// TODO: change to count in last TIME
 			line += " (" + strconv.FormatInt(int64(len(availablePack.Peers)), 10) + ")"
-			
+
 			_, haveFull := party.FullPacks[packHash]
 			if haveFull {
 				line += "*"
 			}
+
 			chatStatus("PACK: " + packHash)
 			chatStatus(line)
 

@@ -374,7 +374,6 @@ func buildPack(partyId string, path string, targetFile *os.File) {
 	sort.Sort(ByFileName(pack.Files))
 	packHash := sha256Pack(pack)
 
-	chatStatus("Adding full pack " + pack.Name)
 	parties[partyId].FullPacks[packHash] = pack
 
 	availablePack := new(AvailablePack)
@@ -419,7 +418,6 @@ func walker(path string, info os.FileInfo, err error) error {
 func runOccasionally() {
 	for partyId, _ := range parties {
 		targetDir := filepath.Join(sharedDir, partyId)
-		chatStatus("walking " + targetDir)
 
 		_, err := os.Stat(targetDir)
 		if err != nil {

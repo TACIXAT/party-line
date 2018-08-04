@@ -22,10 +22,10 @@ func init() {
 
 type PartyLine struct {
 	MinList        map[string]int
-	SeenChats      map[string]bool
 	Id             string
-	FullPacks      map[string]*Pack
-	AvailablePacks map[string]*AvailablePack
+	SeenChats      map[string]bool           `json:"-"`
+	FullPacks      map[string]*Pack          `json:"-"`
+	AvailablePacks map[string]*AvailablePack `json:"-"`
 }
 
 type PartyEnvelope struct {
@@ -515,6 +515,10 @@ func processInvite(env *Envelope) {
 		setStatus("error invalid json (invite)")
 		return
 	}
+
+	party.SeenChats = make(map[string]bool)
+	party.FullPacks = make(map[string]*Pack)
+	party.AvailablePacks = make(map[string]*AvailablePack)
 
 	_, inPending := pending[party.Id]
 	_, inParties := parties[party.Id]
