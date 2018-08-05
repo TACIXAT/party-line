@@ -47,8 +47,15 @@ type PackFileInfo struct {
 	Path           string `json:"-"`
 	Hash           string
 	FirstBlockHash string
+	BlockMap       map[string]*BlockInfo `json:"-"`
 	Size           int64
 	Coverage       []uint64 `json:"-"`
+}
+
+type FileCache struct {
+	ModTime time.Time
+	Size int64
+	PackFileInfo *PackFileInfo
 }
 
 type Pack struct {
@@ -59,6 +66,12 @@ type Pack struct {
 type AvailablePack struct {
 	Pack  *Pack
 	Peers map[string]time.Time
+}
+
+type BlockInfo struct {
+	Index         uint64
+	NextBlockHash string
+	DataHash      string
 }
 
 type Block struct {
