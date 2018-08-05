@@ -553,6 +553,11 @@ func (party *PartyLine) AdvertisePacks() {
 	}
 }
 
+func (party *PartyLine) ClearPacks() {
+	party.FullPacks = make(map[string]*Pack)
+	party.AvailablePacks = make(map[string]*AvailablePack)
+}
+
 func advertiseAll() {
 	for _, party := range parties {
 		party.AdvertisePacks()
@@ -592,4 +597,11 @@ func partyStart(name string) string {
 	parties[party.Id] = party
 
 	return party.Id
+}
+
+func advertiseRoutine() {
+	for {
+		advertiseAll()
+		time.Sleep(30 * time.Second)
+	}
 }

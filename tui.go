@@ -552,8 +552,8 @@ func handleUserInput(buf string) {
 		handleClear(toks)
 	case "/ids":
 		handleIds(toks)
-	case "/files":
-		runOccasionally()
+	case "/rescan":
+		resetPacks()
 	case "/packs":
 		handlePacks(toks)
 	case "/help":

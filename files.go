@@ -52,12 +52,6 @@ type PackFileInfo struct {
 	Coverage       []uint64 `json:"-"`
 }
 
-type FileCache struct {
-	ModTime time.Time
-	Size int64
-	PackFileInfo *PackFileInfo
-}
-
 type Pack struct {
 	Name  string
 	Files []*PackFileInfo
@@ -309,45 +303,6 @@ func fullCoverage(size int64) []uint64 {
 	return coverage
 }
 
-func fresh(packPath string, dotPack *DotPack) bool {
-	packInfo, err := os.Stat(packPath)
-	if err != nil {
-		log.Println(err)
-		setStatus("error statting pack file")
-		return false
-	}
-
-	modTime, seen := fileMod[packPath]
-	if !seen || modTime != packInfo.ModTime() {
-		return true
-	}
-
-	dirPath := filepath.Dir(packPath)
-	for _, shortFilePath := range dotPack.Files {
-		sharedFilePath := filepath.Join(dirPath, shortFilePath)
-		sharedFilePathAbs, err := filepath.Abs(sharedFilePath)
-		if err != nil {
-			log.Println(err)
-			setStatus("error could not get absolute path for file")
-			return false
-		}
-
-		fileInfo, err := os.Stat(sharedFilePathAbs)
-		if err != nil {
-			log.Println(err)
-			setStatus("error statting shared file")
-			return false
-		}
-
-		modTime, seen := fileMod[sharedFilePathAbs]
-		if !seen || modTime != fileInfo.ModTime() {
-			return true
-		}
-	}
-
-	return false
-}
-
 func buildPack(partyId string, path string, targetFile *os.File) {
 	partyDir := filepath.Join(sharedDir, partyId)
 
@@ -364,20 +319,6 @@ func buildPack(partyId string, path string, targetFile *os.File) {
 		setStatus("error no files in pack")
 		return
 	}
-
-	if !fresh(path, dotPack) {
-		setStatus("files in pack unchanged")
-		return
-	}
-
-	packInfo, err := os.Stat(path)
-	if err != nil {
-		log.Println(err)
-		setStatus("error statting pack file")
-		return
-	}
-
-	fileMod[path] = packInfo.ModTime()
 
 	pack.Name = dotPack.Name
 
@@ -437,8 +378,6 @@ func buildPack(partyId string, path string, targetFile *os.File) {
 		packFileInfo.Coverage = fullCoverage(packFileInfo.Size)
 
 		pack.Files = append(pack.Files, packFileInfo)
-
-		fileMod[sharedFilePathAbs] = fileInfo.ModTime()
 	}
 
 	sort.Sort(ByFileName(pack.Files))
@@ -485,24 +424,19 @@ func walker(path string, info os.FileInfo, err error) error {
 	return nil
 }
 
-func runOccasionally() {
-	for {
-		// check for new and changed packs
-		for partyId, _ := range parties {
-			targetDir := filepath.Join(sharedDir, partyId)
+func resetPacks() {
+	// check for new and changed packs
+	for partyId, party := range parties {
+		party.ClearPacks()
+		targetDir := filepath.Join(sharedDir, partyId)
 
-			_, err := os.Stat(targetDir)
-			if err != nil {
-				continue
-			}
-
-			err = filepath.Walk(targetDir, walker)
+		_, err := os.Stat(targetDir)
+		if err != nil {
+			continue
 		}
 
-		// check for removed packs
-		// ...
-
-		advertiseAll()
-		time.Sleep(30 * time.Second)
+		err = filepath.Walk(targetDir, walker)
 	}
+
+	advertiseAll()
 }
