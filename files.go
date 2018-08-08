@@ -44,22 +44,25 @@ type DotPack struct {
 
 type PackFileInfo struct {
 	Name           string
-	Path           string `json:"-"`
 	Hash           string
 	FirstBlockHash string
-	BlockMap       map[string]*BlockInfo `json:"-"`
 	Size           int64
-	Coverage       []uint64 `json:"-"`
+	BlockMap       map[string]*BlockInfo `json:"-"`
+	Coverage       []uint64              `json:"-"`
+	Path           string                `json:"-"`
 }
+
+const (
+	AVAILABLE = iota
+	ACTIVE
+	COMPLETE
+)
 
 type Pack struct {
 	Name  string
 	Files []*PackFileInfo
-}
-
-type AvailablePack struct {
-	Pack  *Pack
-	Peers map[string]time.Time
+	State int                  `json:"-"`
+	Peers map[string]time.Time `json:"-"`
 }
 
 type BlockInfo struct {
@@ -307,6 +310,9 @@ func buildPack(partyId string, path string, targetFile *os.File) {
 	partyDir := filepath.Join(sharedDir, partyId)
 
 	pack := new(Pack)
+	pack.Peers = make(map[string]time.Time)
+	pack.Peers[peerSelf.Id()] = time.Now().UTC()
+	pack.State = COMPLETE
 
 	dotPack, err := unpackFile(targetFile)
 	if err != nil {
@@ -383,13 +389,7 @@ func buildPack(partyId string, path string, targetFile *os.File) {
 	sort.Sort(ByFileName(pack.Files))
 	packHash := sha256Pack(pack)
 
-	parties[partyId].FullPacks[packHash] = pack
-
-	availablePack := new(AvailablePack)
-	availablePack.Pack = pack
-	availablePack.Peers = make(map[string]time.Time)
-	availablePack.Peers[peerSelf.Id()] = time.Now().UTC()
-	parties[partyId].AvailablePacks[packHash] = availablePack
+	parties[partyId].Packs[packHash] = pack
 }
 
 func walker(path string, info os.FileInfo, err error) error {

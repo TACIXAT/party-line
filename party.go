@@ -18,14 +18,14 @@ var pending map[string]*PartyLine
 func init() {
 	parties = make(map[string]*PartyLine)
 	pending = make(map[string]*PartyLine)
+	go advertise()
 }
 
 type PartyLine struct {
-	MinList        map[string]int
-	Id             string
-	SeenChats      map[string]bool           `json:"-"`
-	FullPacks      map[string]*Pack          `json:"-"`
-	AvailablePacks map[string]*AvailablePack `json:"-"`
+	MinList   map[string]int
+	Id        string
+	SeenChats map[string]bool  `json:"-"`
+	Packs     map[string]*Pack `json:"-"`
 }
 
 type PartyEnvelope struct {
@@ -267,6 +267,10 @@ func (party *PartyLine) SendAdvertisement(packSha256 string, pack *Pack) {
 	party.sendToNeighbors("ad", signedPartyAdvertisement)
 }
 
+func (party *PartyLine) SendRequestFile() {
+	
+}
+
 func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
 	signedPartyAdvertisement := partyEnv.Data
 	jsonPartyAdvertisement := signedPartyAdvertisement[sign.SignatureSize:]
@@ -296,30 +300,30 @@ func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
 		return
 	}
 
-	pack := new(Pack)
-	*pack = partyAdvertisement.Pack
+	newPack := new(Pack)
+	*newPack = partyAdvertisement.Pack
 
 	hash := partyAdvertisement.Hash
-	if hash != sha256Pack(pack) {
+	if hash != sha256Pack(newPack) {
 		setStatus("error bad pack hash (party:ad)")
 		return
 	}
 
-	availablePack, ok := party.AvailablePacks[hash]
+	pack, ok := party.Packs[hash]
 	if !ok {
-		availablePack = new(AvailablePack)
-		availablePack.Pack = pack
-		availablePack.Peers = make(map[string]time.Time)
-		party.AvailablePacks[hash] = availablePack
+		newPack.Peers = make(map[string]time.Time)
+		newPack.State = AVAILABLE
+		party.Packs[hash] = newPack
+		pack = newPack
 	}
 
 	adTime := partyAdvertisement.Time
-	peerTime, ok := availablePack.Peers[min.Id()]
+	peerTime, ok := pack.Peers[min.Id()]
 	if !ok || peerTime.Before(adTime) {
 		if adTime.Sub(peerTime) > 30*time.Second {
 			party.sendToNeighbors("ad", signedPartyAdvertisement)
 		}
-		availablePack.Peers[min.Id()] = adTime
+		pack.Peers[min.Id()] = adTime
 	}
 }
 
@@ -517,8 +521,7 @@ func processInvite(env *Envelope) {
 	}
 
 	party.SeenChats = make(map[string]bool)
-	party.FullPacks = make(map[string]*Pack)
-	party.AvailablePacks = make(map[string]*AvailablePack)
+	party.Packs = make(map[string]*Pack)
 
 	_, inPending := pending[party.Id]
 	_, inParties := parties[party.Id]
@@ -548,14 +551,13 @@ func acceptInvite(partyId string) {
 }
 
 func (party *PartyLine) AdvertisePacks() {
-	for packSha256, pack := range party.FullPacks {
+	for packSha256, pack := range party.Packs {
 		party.SendAdvertisement(packSha256, pack)
 	}
 }
 
 func (party *PartyLine) ClearPacks() {
-	party.FullPacks = make(map[string]*Pack)
-	party.AvailablePacks = make(map[string]*AvailablePack)
+	party.Packs = make(map[string]*Pack)
 }
 
 func advertiseAll() {
@@ -586,11 +588,11 @@ func partyStart(name string) string {
 	// this shouldn't be guessable, so we will enforce 12 bytes random
 	name = name[:minimum(len(name), 8)]
 	idHex := hex.EncodeToString(idBytes)
+
 	party.Id = name + idHex[:len(idHex)-len(name)]
 	party.MinList = make(map[string]int)
 	party.SeenChats = make(map[string]bool)
-	party.FullPacks = make(map[string]*Pack)
-	party.AvailablePacks = make(map[string]*AvailablePack)
+	party.Packs = make(map[string]*Pack)
 
 	party.MinList[peerSelf.Id()] = 0
 
@@ -599,9 +601,9 @@ func partyStart(name string) string {
 	return party.Id
 }
 
-func advertiseRoutine() {
+func advertise() {
 	for {
 		advertiseAll()
-		time.Sleep(30 * time.Second)
+		time.Sleep(60 * time.Second)
 	}
 }

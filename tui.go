@@ -472,20 +472,19 @@ func handleLeave(toks []string) {
 func handlePacks(toks []string) {
 	for partyId, party := range parties {
 		chatStatus("== " + partyId + " ==")
-		for packHash, availablePack := range party.AvailablePacks {
-			line := "\"" + availablePack.Pack.Name + "\""
+		for packHash, pack := range party.Packs {
+			line := "\"" + pack.Name + "\""
 			// TODO: change to count in last TIME
-			line += " (" + strconv.FormatInt(int64(len(availablePack.Peers)), 10) + ")"
+			line += " (" + strconv.FormatInt(int64(len(pack.Peers)), 10) + ")"
 
-			_, haveFull := party.FullPacks[packHash]
-			if haveFull {
+			if pack.State == COMPLETE {
 				line += "*"
 			}
 
 			chatStatus("PACK: " + packHash)
 			chatStatus(line)
 
-			for _, packFileInfo := range availablePack.Pack.Files {
+			for _, packFileInfo := range pack.Files {
 				chatStatus("  FILE: " + packFileInfo.Hash)
 				chatStatus("  \"" + packFileInfo.Name + "\"")
 			}
@@ -556,6 +555,8 @@ func handleUserInput(buf string) {
 		resetPacks()
 	case "/packs":
 		handlePacks(toks)
+	case "/get":
+		handleGet(toks)
 	case "/help":
 		handleHelp()
 	case "/list":
