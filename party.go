@@ -268,7 +268,7 @@ func (party *PartyLine) SendAdvertisement(packSha256 string, pack *Pack) {
 }
 
 func (party *PartyLine) SendRequestFile() {
-	
+
 }
 
 func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {

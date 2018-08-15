@@ -1,10 +1,10 @@
-package main 
+package main
 
 import (
+	"fmt"
+	"math"
 	"math/big"
 	"math/rand"
-	"math"
-	"fmt"
 	"time"
 )
 
@@ -20,17 +20,19 @@ type Chain struct {
 const BUFFER_SIZE = 10240
 
 const (
-     B  int = 1 << (10 * iota)
-     KB 
-     MB
-     GB
-     TB
- )
+	B int = 1 << (10 * iota)
+	KB
+	MB
+	GB
+	TB
+)
 
 func getIndices(length int) {
 	for i := 0; i < length; i++ {
-		skip := i+2*i
-		if skip < length && skip > i {
+		skip := 10 * i
+		if i == (length - 1) {
+			fmt.Println(i, "_", "_")
+		} else if skip < length && skip > i {
 			fmt.Println(i, i+1, skip)
 		} else {
 			fmt.Println(i, i+1, "_")
@@ -72,7 +74,7 @@ func maxSteps(size int) int {
 		return 0
 	}
 
-	steps := math.Log(float64(size / BUFFER_SIZE)) / math.Log(float64(3)) 
+	steps := math.Log(float64(size/BUFFER_SIZE)) / math.Log(float64(3))
 	return int(steps)
 }
 
@@ -86,8 +88,8 @@ func findNearest(coverage *big.Int, idx int, depth int) []int {
 		return append(result, idx)
 	}
 
-	path1 := findNearest(coverage, idx / 3, depth+1)
-	path2 := findNearest(coverage, idx - 1, depth+1)
+	path1 := findNearest(coverage, idx/3, depth+1)
+	path2 := findNearest(coverage, idx-1, depth+1)
 
 	if len(path1) < len(path2) {
 		return append(path1, idx)
@@ -107,22 +109,22 @@ func main() {
 	getIndices(blocks)
 	fmt.Printf("%b\n", fullCoverage(size))
 
-	fmt.Println("50KB", maxSteps(50 * KB))
-	fmt.Println("700MB", maxSteps(700 * MB))
-	fmt.Println("10GB", maxSteps(10 * GB))
+	fmt.Println("50KB", maxSteps(50*KB))
+	fmt.Println("700MB", maxSteps(700*MB))
+	fmt.Println("10GB", maxSteps(10*GB))
 	randCov := randomCoverage(size, 10)
 	fmt.Printf("%0100b\n", randCov)
 	fmt.Println(findNearest(randCov, 99, 0))
 	fmt.Println("setting")
 	randCovTB := randomCoverage(TB, 1000)
 	fmt.Println("searching")
-	fmt.Println(findNearest(randCovTB, TB / BUFFER_SIZE, 0))
+	fmt.Println(findNearest(randCovTB, TB/BUFFER_SIZE, 0))
 }
 
 /*
-MB = (1 << (10 * 2)) 
-GB = (1 << (10 * 3)) 
-TB = (1 << (10 * 4)) 
+MB = (1 << (10 * 2))
+GB = (1 << (10 * 3))
+TB = (1 << (10 * 4))
 BLOCK = 10240
-(MB / BLOCK) / 3 **  
+(MB / BLOCK) / 3 **
 */

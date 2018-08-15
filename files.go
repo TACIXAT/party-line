@@ -74,6 +74,7 @@ type BlockInfo struct {
 type Block struct {
 	Index         uint64
 	NextBlockHash string
+	SkipBlockHash string
 	Data          []byte
 	DataHash      string
 }
@@ -217,6 +218,8 @@ func calculateChain(targetFile *os.File, size int64) (string, error) {
 		return "", errors.New("seek failed for file")
 	}
 
+	skips := make(map[int]string)
+
 	// read backward
 	for index > -1 {
 		buffer := make([]byte, BUFFER_SIZE) // 10 KiB
@@ -234,11 +237,16 @@ func calculateChain(targetFile *os.File, size int64) (string, error) {
 		curr.Data = buffer[:bytesRead]
 		curr.DataHash = sha256Buffer
 		curr.NextBlockHash = sha256Block(prev)
+		curr.SkipBlockHash = sha256Block(skips[index*10])
 
 		blockHash := sha256Block(curr)
 		blocks[blockHash] = curr
 
 		prev = curr
+		if index%10 == 0 {
+			skips[index] = blockHash
+		}
+
 		index--
 		_, err = targetFile.Seek(-(int64(bytesRead) + BUFFER_SIZE), 1)
 	}
