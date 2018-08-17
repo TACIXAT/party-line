@@ -27,15 +27,30 @@ const (
 	TB
 )
 
+func left(i int) int {
+	return 2*i + 1
+}
+
+func right(i int) int {
+	return 2*i + 2
+}
+
+func parent(i int) int {
+	return (i - 1) / 2
+}
+
 func getIndices(length int) {
 	for i := 0; i < length; i++ {
-		skip := 10 * i
+		skip_left := 2*i + 1
+		skip_right := 2*i + 2
 		if i == (length - 1) {
 			fmt.Println(i, "_", "_")
-		} else if skip < length && skip > i {
-			fmt.Println(i, i+1, skip)
+		} else if skip_left < length && skip_right < length {
+			fmt.Println(i, i+1, skip_left, skip_right)
+		} else if skip_left < length && skip_right >= length {
+			fmt.Println(i, i+1, skip_left, "_")
 		} else {
-			fmt.Println(i, i+1, "_")
+			fmt.Println(i, i+1, "_", "_")
 		}
 	}
 }
@@ -70,32 +85,19 @@ func randomCoverage(size int, covered int) *big.Int {
 }
 
 func maxSteps(size int) int {
-	if size < BUFFER_SIZE {
-		return 0
-	}
-
-	steps := math.Log(float64(size/BUFFER_SIZE)) / math.Log(float64(3))
-	return int(steps)
+	return int(math.Log(float64(size)))
 }
 
-func findNearest(coverage *big.Int, idx int, depth int) []int {
-	if depth > 20 {
-		return nil
+func findPath(coverage *big.Int, idx int) []int {
+	result := make([]int, 0)
+	currIdx := idx
+	for currIdx != 0 {
+		result = append(result, currIdx)
+		currIdx = parent(currIdx)
 	}
 
-	if coverage.Bit(idx) == 1 {
-		result := make([]int, 0)
-		return append(result, idx)
-	}
-
-	path1 := findNearest(coverage, idx/3, depth+1)
-	path2 := findNearest(coverage, idx-1, depth+1)
-
-	if len(path1) < len(path2) {
-		return append(path1, idx)
-	}
-
-	return append(path2, idx)
+	result = append(result, currIdx)
+	return result
 }
 
 func pathTo(coverage *big.Int, idx int) []int {
@@ -114,11 +116,11 @@ func main() {
 	fmt.Println("10GB", maxSteps(10*GB))
 	randCov := randomCoverage(size, 10)
 	fmt.Printf("%0100b\n", randCov)
-	fmt.Println(findNearest(randCov, 99, 0))
+	fmt.Println(findPath(randCov, 99))
 	fmt.Println("setting")
 	randCovTB := randomCoverage(TB, 1000)
 	fmt.Println("searching")
-	fmt.Println(findNearest(randCovTB, TB/BUFFER_SIZE, 0))
+	fmt.Println(findPath(randCovTB, TB/BUFFER_SIZE))
 }
 
 /*
