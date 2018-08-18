@@ -72,11 +72,12 @@ type BlockInfo struct {
 }
 
 type Block struct {
-	Index         uint64
-	NextBlockHash string
-	SkipBlockHash string
-	Data          []byte
-	DataHash      string
+	Index          uint64
+	NextBlockHash  string
+	LeftBlockHash  string
+	RightBlockHash string
+	Data           []byte
+	DataHash       string
 }
 
 var sharedDir string
@@ -198,6 +199,14 @@ func unpackFile(targetFile *os.File) (*DotPack, error) {
 	return dotPack, nil
 }
 
+func leftChild(i int) int {
+	return 2*i + 1
+}
+
+func rightChild(i int) int {
+	return 2*i + 2
+}
+
 func calculateChain(targetFile *os.File, size int64) (string, error) {
 	if size < 0 {
 		setStatus("error file size less than 0 (c'est une pipe?)")
@@ -237,15 +246,14 @@ func calculateChain(targetFile *os.File, size int64) (string, error) {
 		curr.Data = buffer[:bytesRead]
 		curr.DataHash = sha256Buffer
 		curr.NextBlockHash = sha256Block(prev)
-		curr.SkipBlockHash = sha256Block(skips[index*10])
+		curr.LeftBlockHash = sha256Block(skips[leftChild(index)])
+		curr.RightBlockHash = sha256Block(skips[rightChild(index)])
 
 		blockHash := sha256Block(curr)
 		blocks[blockHash] = curr
 
 		prev = curr
-		if index%10 == 0 {
-			skips[index] = blockHash
-		}
+		skips[index] = blockHash
 
 		index--
 		_, err = targetFile.Seek(-(int64(bytesRead) + BUFFER_SIZE), 1)
