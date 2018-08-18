@@ -552,12 +552,22 @@ func acceptInvite(partyId string) {
 
 func (party *PartyLine) AdvertisePacks() {
 	for packSha256, pack := range party.Packs {
-		party.SendAdvertisement(packSha256, pack)
+		if pack.State == COMPLETE {
+			party.SendAdvertisement(packSha256, pack)
+		}
 	}
 }
 
 func (party *PartyLine) ClearPacks() {
 	party.Packs = make(map[string]*Pack)
+}
+
+func (party *PartyLine) StartPack(packHash string) {
+	pack := party.Packs[packHash]
+	pack.State = ACTIVE
+	// write pending pack info
+	// dummy files
+	// start request loop
 }
 
 func advertiseAll() {

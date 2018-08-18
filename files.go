@@ -199,11 +199,11 @@ func unpackFile(targetFile *os.File) (*DotPack, error) {
 	return dotPack, nil
 }
 
-func leftChild(i int) int {
+func leftChild(i int64) int64 {
 	return 2*i + 1
 }
 
-func rightChild(i int) int {
+func rightChild(i int64) int64 {
 	return 2*i + 2
 }
 
@@ -227,7 +227,7 @@ func calculateChain(targetFile *os.File, size int64) (string, error) {
 		return "", errors.New("seek failed for file")
 	}
 
-	skips := make(map[int]string)
+	skips := make(map[int64]string)
 
 	// read backward
 	for index > -1 {
@@ -246,8 +246,8 @@ func calculateChain(targetFile *os.File, size int64) (string, error) {
 		curr.Data = buffer[:bytesRead]
 		curr.DataHash = sha256Buffer
 		curr.NextBlockHash = sha256Block(prev)
-		curr.LeftBlockHash = sha256Block(skips[leftChild(index)])
-		curr.RightBlockHash = sha256Block(skips[rightChild(index)])
+		curr.LeftBlockHash = skips[leftChild(index)]
+		curr.RightBlockHash = skips[rightChild(index)]
 
 		blockHash := sha256Block(curr)
 		blocks[blockHash] = curr

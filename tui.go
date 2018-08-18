@@ -489,8 +489,57 @@ func handlePacks(toks []string) {
 				chatStatus("  \"" + packFileInfo.Name + "\"")
 			}
 		}
-
 	}
+}
+
+func handleGet(toks []string) {
+	// find party
+	if len(toks) < 3 {
+		setStatus("error insufficient args to get command")
+		return
+	}
+
+	partyPrefix := toks[1]
+
+	// iterate parties
+	partyId := ""
+	for id, _ := range parties {
+		if strings.HasPrefix(id, partyPrefix) {
+			if partyId != "" {
+				setStatus(fmt.Sprintf(
+					"error multiple parties found for %s", partyPrefix))
+				return
+			}
+			partyId = id
+		}
+	}
+
+	if partyId == "" {
+		setStatus(fmt.Sprintf("error party not found for %s", partyPrefix))
+		return
+	}
+
+	hashPrefix := toks[2]
+
+	// find pack
+	packHash := ""
+	for hash, _ := range parties[partyId].Packs {
+		if strings.HasPrefix(hash, hashPrefix) {
+			if packHash != "" {
+				setStatus(fmt.Sprintf(
+					"error multiple packs found for %s", hashPrefix))
+				return
+			}
+			packHash = hash
+		}
+	}
+
+	if packHash == "" {
+		setStatus(fmt.Sprintf("error pack not found for %s", hashPrefix))
+		return
+	}
+
+	parties[partyId].StartPack(packHash)
 }
 
 func handleHelp() {
