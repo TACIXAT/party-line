@@ -19,9 +19,6 @@ import (
 
 /*
 TODO:
-	auto discover packs
-	auto advertise packs
-
 	download pack
 	request file (coverage)
 	partial packs
@@ -34,6 +31,7 @@ TODO:
 	cursor on input
 	sent scrollback
 	mute user
+	bs shortener
 */
 
 type Self struct {

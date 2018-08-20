@@ -565,8 +565,27 @@ func (party *PartyLine) ClearPacks() {
 func (party *PartyLine) StartPack(packHash string) {
 	pack := party.Packs[packHash]
 	pack.State = ACTIVE
-	// write pending pack info
-	// dummy files
+	// dest = join(sharedDir, partyId, packHash)
+	// mkdir -p dest
+
+	// write fs_normalize(pack.name) + ".pending"
+	// write state to pending
+		// pack name
+		// pack hash
+		// file names
+		// file hashes
+		// file sizes
+		// file first blocks
+		// file coverage
+		// on pause write block map
+
+	// set path in packfileinfo
+	// init block map?
+	// init coverage?
+
+	// write zeros to files
+	// maybe map from path to file pointer
+
 	// start request loop
 }
 

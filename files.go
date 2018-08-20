@@ -66,9 +66,11 @@ type Pack struct {
 }
 
 type BlockInfo struct {
-	Index         uint64
-	NextBlockHash string
-	DataHash      string
+	Index          uint64
+	NextBlockHash  string
+	LeftBlockHash  string
+	RightBlockHash string
+	DataHash       string
 }
 
 type Block struct {
@@ -119,6 +121,9 @@ func (packFileInfo ByFileName) Less(i, j int) bool {
 	return packFileInfo[i].Name < packFileInfo[j].Name
 }
 
+// TODO: first pack received sets file names for ad
+// an aggressive client could troll with file names
+// I should fix this
 func sha256Pack(pack *Pack) string {
 	if pack == nil {
 		return ""
@@ -129,6 +134,7 @@ func sha256Pack(pack *Pack) string {
 	hash := sha256.New()
 	hash.Write([]byte(pack.Name))
 	for _, packFileInfo := range pack.Files {
+		hash.Write([]byte(packFileInfo.Name))
 		hash.Write([]byte(packFileInfo.Hash))
 		hash.Write([]byte(packFileInfo.FirstBlockHash))
 		hash.Write([]byte(strconv.FormatInt(packFileInfo.Size, 10)))
