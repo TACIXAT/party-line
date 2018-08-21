@@ -330,6 +330,17 @@ func fullCoverage(size int64) []uint64 {
 
 func buildPack(partyId string, path string, targetFile *os.File) {
 	partyDir := filepath.Join(sharedDir, partyId)
+	partyDirAbs, err := filepath.Abs(partyDir)
+	if err != nil {
+		log.Println(err)
+		setStatus("error could not get absolute path for party dir")
+		return
+	}
+
+	if !strings.HasPrefix(partyDirAbs, sharedDir) {
+		setStatus("error party dir traverses directories")
+		return
+	}
 
 	pack := new(Pack)
 	pack.Peers = make(map[string]time.Time)

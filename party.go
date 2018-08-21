@@ -8,6 +8,10 @@ import (
 	"github.com/kevinburke/nacl/box"
 	"github.com/kevinburke/nacl/sign"
 	"log"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
 	"sort"
 	"time"
 )
@@ -520,6 +524,12 @@ func processInvite(env *Envelope) {
 		return
 	}
 
+	match, err := regexp.MatchString("^[a-zA-Z0-9]{32}$", party.Id)
+	if err != nil || !match {
+		setStatus("error invalid party id (invite)")
+		return	
+	}
+
 	party.SeenChats = make(map[string]bool)
 	party.Packs = make(map[string]*Pack)
 
@@ -564,9 +574,32 @@ func (party *PartyLine) ClearPacks() {
 
 func (party *PartyLine) StartPack(packHash string) {
 	pack := party.Packs[packHash]
-	pack.State = ACTIVE
-	// dest = join(sharedDir, partyId, packHash)
-	// mkdir -p dest
+	
+	// TODO: if party.Id contains '.' make no share
+	// ALT: replace any dots for file name
+	// ALT: restrict party name to alphanum
+	// ALT: hash party id for file system
+	destinationDir := filepath.Join(sharedDir, party.Id, packHash)
+	destinationDirAbs, err := filepath.Abs(destinationDir)
+	if err != nil {
+		log.Println(err)
+		setStatus("error could not get absolute path for party dir")
+		return
+	}
+
+	// doesn't check for dir traversal explicitly, just that we're contained
+	// we should be safe since we ignore parties that aren't [a-zA-Z0-9]
+	if !strings.HasPrefix(destinationDirAbs, sharedDir) {
+		setStatus("error destination dir outside of shared dir")
+		return
+	}
+
+	err = os.MkdirAll(destinationDir, 0700)
+	if err != nil {
+		log.Println(err)
+		setStatus("error could not create destination dir")
+		return	
+	}
 
 	// write fs_normalize(pack.name) + ".pending"
 	// write state to pending
@@ -579,6 +612,7 @@ func (party *PartyLine) StartPack(packHash string) {
 		// file coverage
 		// on pause write block map
 
+	pack.State = ACTIVE
 	// set path in packfileinfo
 	// init block map?
 	// init coverage?
@@ -619,6 +653,12 @@ func partyStart(name string) string {
 	idHex := hex.EncodeToString(idBytes)
 
 	party.Id = name + idHex[:len(idHex)-len(name)]
+	match, err := regexp.MatchString("^[a-zA-Z0-9]{32}$", party.Id)
+	if err != nil || !match {
+		setStatus("error invalid party id (start)")
+		return ""
+	}
+
 	party.MinList = make(map[string]int)
 	party.SeenChats = make(map[string]bool)
 	party.Packs = make(map[string]*Pack)

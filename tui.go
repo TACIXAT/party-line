@@ -211,7 +211,9 @@ func handleStart(toks []string) {
 	}
 
 	id := partyStart(toks[1])
-	setStatus(fmt.Sprintf("party started %s", id))
+	if id != "" {
+		setStatus(fmt.Sprintf("party started %s", id))
+	}
 }
 
 // invite channel
