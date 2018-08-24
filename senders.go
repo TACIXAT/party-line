@@ -278,6 +278,11 @@ func sendChat(msg string) {
 
 	env.Data = sign.Sign([]byte(jsonChat), self.SignPrv)
 	jsonEnv, err := json.Marshal(env)
+	if err != nil {
+		log.Println(err)
+		setStatus("error marshalling env to json")
+		return
+	}
 
 	for _, peer := range sendPeers {
 		// closed := box.EasySeal([]byte(jsonChat), peer.EncPub, self.EncPrv)

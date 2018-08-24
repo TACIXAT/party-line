@@ -11,8 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -248,7 +248,8 @@ func (party *PartyLine) SendDisconnect() {
 
 	delete(parties, party.Id)
 
-	signedPartyDisconnect := sign.Sign([]byte(jsonPartyDisconnect), self.SignPrv)
+	signedPartyDisconnect := sign.Sign(
+		[]byte(jsonPartyDisconnect), self.SignPrv)
 	party.sendToNeighbors("disconnect", signedPartyDisconnect)
 }
 
@@ -266,7 +267,8 @@ func (party *PartyLine) SendAdvertisement(packSha256 string, pack *Pack) {
 		return
 	}
 
-	signedPartyAdvertisement := sign.Sign([]byte(jsonPartyAdvertisement), self.SignPrv)
+	signedPartyAdvertisement := sign.Sign(
+		[]byte(jsonPartyAdvertisement), self.SignPrv)
 
 	party.sendToNeighbors("ad", signedPartyAdvertisement)
 }
@@ -319,6 +321,12 @@ func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
 		newPack.State = AVAILABLE
 		party.Packs[hash] = newPack
 		pack = newPack
+
+		for _, file := range pack.Files {
+			file.BlockMap = make(map[string]*BlockInfo)
+			file.Coverage = make([]uint64)
+			file.Path = ""
+		}
 	}
 
 	adTime := partyAdvertisement.Time
@@ -527,7 +535,7 @@ func processInvite(env *Envelope) {
 	match, err := regexp.MatchString("^[a-zA-Z0-9]{32}$", party.Id)
 	if err != nil || !match {
 		setStatus("error invalid party id (invite)")
-		return	
+		return
 	}
 
 	party.SeenChats = make(map[string]bool)
@@ -574,51 +582,62 @@ func (party *PartyLine) ClearPacks() {
 
 func (party *PartyLine) StartPack(packHash string) {
 	pack := party.Packs[packHash]
-	
-	// TODO: if party.Id contains '.' make no share
-	// ALT: replace any dots for file name
-	// ALT: restrict party name to alphanum
-	// ALT: hash party id for file system
-	destinationDir := filepath.Join(sharedDir, party.Id, packHash)
-	destinationDirAbs, err := filepath.Abs(destinationDir)
+
+	// party ids are alphanum
+	partyDir := filepath.Join(sharedDir, party.Id)
+	partyDirAbs, err := filepath.Abs(partyDir)
 	if err != nil {
 		log.Println(err)
 		setStatus("error could not get absolute path for party dir")
 		return
 	}
 
-	// doesn't check for dir traversal explicitly, just that we're contained
-	// we should be safe since we ignore parties that aren't [a-zA-Z0-9]
-	if !strings.HasPrefix(destinationDirAbs, sharedDir) {
-		setStatus("error destination dir outside of shared dir")
+	if strings.Contains(pack.Name, "..") {
+		setStatus("error pack name potential directory traversal")
 		return
 	}
 
-	err = os.MkdirAll(destinationDir, 0700)
+	destinationDirAbs := filepath.Join(partyDir, pack.Name)
+
+	// double check in case there are tricks we don't know about
+	if !strings.HasPrefix(destinationDirAbs, partyDir) {
+		setStatus("error destination dir outside of party dir")
+		return
+	}
+
+	err = os.MkdirAll(destinationDirAbs, 0700)
 	if err != nil {
 		log.Println(err)
 		setStatus("error could not create destination dir")
-		return	
+		return
 	}
 
-	// write fs_normalize(pack.name) + ".pending"
-	// write state to pending
-		// pack name
-		// pack hash
-		// file names
-		// file hashes
-		// file sizes
-		// file first blocks
-		// file coverage
-		// on pause write block map
+	pendingPack := pack.ToPendingPack()
+	jsonPendingPack, err := json.Marshal(pendingPack)
+	if err != nil {
+		log.Println(err)
+		setStatus("error marshalling pending pack to json")
+		return
+	}
+
+	pendingFileName := filepath.Join(destinationDirAbs, pack.Name+".pending")
+	err := ioutil.WriteFile(pendingFileName, []byte(jsonPendingPack), 0644)
+	if err != nil {
+		log.Println(err)
+		setStatus("error writing pending pack to file")
+		return
+	}
 
 	pack.State = ACTIVE
-	// set path in packfileinfo
-	// init block map?
-	// init coverage?
+
+	pack.SetPaths(destinationDirAbs)
 
 	// write zeros to files
-	// maybe map from path to file pointer
+	for _, file := range pack.Files {
+		// TODO: writeZeroFile(pack.Name, pack.Size)
+	}
+
+	// start writer go routine (somewhere else?)
 
 	// start request loop
 }

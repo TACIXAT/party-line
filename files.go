@@ -65,6 +65,58 @@ type Pack struct {
 	Peers map[string]time.Time `json:"-"`
 }
 
+type PendingPack struct {
+	Name  string
+	Hash  string
+	Files []PendingFile
+}
+
+type PendingFile struct {
+	Name           string
+	Hash           string
+	Size           int64
+	FirstBlockHash string
+	Coverage       []uint
+	BlockInfo      []BlockInfo
+}
+
+// this function is a little silly
+// it only exists because we don't serialize BlockMap, Coverage, and Path
+// over the network, so now when we want to serialize to disk we need to
+// copy to another struct, if anyone has better ideas open an issue
+func (pack *Pack) ToPendingPack() *PendingPack {
+	pendingPack := new(PendingPack)
+	pendingPack.Name = pack.Name
+	pendingPack.Hash = packHash
+
+	for _, file := range pack.Files {
+		pendingFile := new(PendingFile)
+		pendingFile.Name = file.Name
+		pendingFile.Hash = file.Hash
+		pendingFile.Size = file.Size
+		pendingFile.FirstBlockHash = file.FirstBlockHash
+		pendingFile.Coverage = file.Coverage
+		pendingFile.BlockInfo = file.BlockInfo
+		pendingFile.Coverage = file.Coverage
+		pendingPack.Files = append(pendingPack.Files, pendingFile)
+	}
+
+	return pendingPack
+}
+
+func (pack *Pack) SetPaths(baseDir string) {
+	for _, file := range pack.Files {
+		path := filepath.Join(baseDir, file.Name)
+		if !strings.HasPrefix(path, baseDir) {
+			errMsg := "error skipping file " + pack.Name + "for dir traversal"
+			log.Pritln(errMsg)
+			setStatus(errMsg)
+			continue
+		}
+		file.Path = path
+	}
+}
+
 type BlockInfo struct {
 	Index          uint64
 	NextBlockHash  string
