@@ -47,9 +47,10 @@ type PackFileInfo struct {
 	Hash           string
 	FirstBlockHash string
 	Size           int64
-	BlockMap       map[string]*BlockInfo `json:"-"`
-	Coverage       []uint64              `json:"-"`
-	Path           string                `json:"-"`
+	BlockMap       map[string]BlockInfo `json:"-"`
+	BlockLookup    map[uint64]string    `json:"-"`
+	Coverage       []uint64             `json:"-"`
+	Path           string               `json:"-"`
 }
 
 const (
@@ -76,18 +77,20 @@ type PendingFile struct {
 	Hash           string
 	Size           int64
 	FirstBlockHash string
-	Coverage       []uint
-	BlockInfo      []BlockInfo
+	Coverage       []uint64
+	BlockMap       map[string]BlockInfo
+	BlockLookup    map[uint64]string
+	Path           string
 }
 
-// this function is a little silly
+// this struct / function is a little silly
 // it only exists because we don't serialize BlockMap, Coverage, and Path
 // over the network, so now when we want to serialize to disk we need to
 // copy to another struct, if anyone has better ideas open an issue
 func (pack *Pack) ToPendingPack() *PendingPack {
 	pendingPack := new(PendingPack)
 	pendingPack.Name = pack.Name
-	pendingPack.Hash = packHash
+	pendingPack.Hash = sha256Pack(pack)
 
 	for _, file := range pack.Files {
 		pendingFile := new(PendingFile)
@@ -95,10 +98,11 @@ func (pack *Pack) ToPendingPack() *PendingPack {
 		pendingFile.Hash = file.Hash
 		pendingFile.Size = file.Size
 		pendingFile.FirstBlockHash = file.FirstBlockHash
+		pendingFile.BlockMap = file.BlockMap
+		pendingFile.BlockLookup = file.BlockLookup
 		pendingFile.Coverage = file.Coverage
-		pendingFile.BlockInfo = file.BlockInfo
-		pendingFile.Coverage = file.Coverage
-		pendingPack.Files = append(pendingPack.Files, pendingFile)
+		pendingFile.Path = file.Path
+		pendingPack.Files = append(pendingPack.Files, *pendingFile)
 	}
 
 	return pendingPack
@@ -109,7 +113,7 @@ func (pack *Pack) SetPaths(baseDir string) {
 		path := filepath.Join(baseDir, file.Name)
 		if !strings.HasPrefix(path, baseDir) {
 			errMsg := "error skipping file " + pack.Name + "for dir traversal"
-			log.Pritln(errMsg)
+			log.Println(errMsg)
 			setStatus(errMsg)
 			continue
 		}
@@ -132,6 +136,28 @@ type Block struct {
 	RightBlockHash string
 	Data           []byte
 	DataHash       string
+}
+
+func (block *Block) ToBlockInfo() *BlockInfo {
+	blockInfo := new(BlockInfo)
+	blockInfo.Index = block.Index
+	blockInfo.NextBlockHash = block.NextBlockHash
+	blockInfo.LeftBlockHash = block.LeftBlockHash
+	blockInfo.RightBlockHash = block.RightBlockHash
+	blockInfo.DataHash = block.DataHash
+	return blockInfo
+}
+
+func buildBlockLookup(blockMap map[string]*BlockInfo, firstBlockHash string) map[uint64]string {
+	currBlockHash := firstBlockHash
+	idx := 0
+	blockLookup := make(map[uint64]string)
+	for currBlockHash != "" {
+		blockLookup[idx] = currBlockHash
+		currBlockHash = blockMap[currBlockHash].NextBlockHash
+		idx++
+	}
+	return blockLookup
 }
 
 var sharedDir string
@@ -265,16 +291,17 @@ func rightChild(i int64) int64 {
 	return 2*i + 2
 }
 
-func calculateChain(targetFile *os.File, size int64) (string, error) {
+func calculateChain(targetFile *os.File, size int64) (string, map[string]BlockInfo, error) {
 	if size < 0 {
 		setStatus("error file size less than 0 (c'est une pipe?)")
-		return "", errors.New("file size less than 0")
+		return "", nil, errors.New("file size less than 0")
 	}
 
 	var prev *Block
 	prev = nil
 
 	blocks := make(map[string]*Block)
+	blockMap := make(map[string]BlockInfo)
 	lastBlockSize := size % BUFFER_SIZE
 	index := size / BUFFER_SIZE
 
@@ -282,7 +309,7 @@ func calculateChain(targetFile *os.File, size int64) (string, error) {
 	if err != nil {
 		log.Println(err)
 		setStatus("error seek failed in file")
-		return "", errors.New("seek failed for file")
+		return "", nil, errors.New("seek failed for file")
 	}
 
 	skips := make(map[int64]string)
@@ -294,7 +321,7 @@ func calculateChain(targetFile *os.File, size int64) (string, error) {
 		if err != nil && err != io.EOF {
 			log.Println(err)
 			setStatus("error failed read")
-			return "", errors.New("failed read of file")
+			return "", nil, errors.New("failed read of file")
 		}
 
 		sha256Buffer := sha256Bytes(buffer[:bytesRead])
@@ -309,6 +336,7 @@ func calculateChain(targetFile *os.File, size int64) (string, error) {
 
 		blockHash := sha256Block(curr)
 		blocks[blockHash] = curr
+		blockMap[blockHash] = *curr.ToBlockInfo()
 
 		prev = curr
 		skips[index] = blockHash
@@ -321,7 +349,7 @@ func calculateChain(targetFile *os.File, size int64) (string, error) {
 	if err != nil {
 		log.Println(err)
 		setStatus("error could not seek to beginning of file")
-		return "", errors.New("could not seek to beginning of file")
+		return "", nil, errors.New("could not seek to beginning of file")
 	}
 
 	// test forward
@@ -333,7 +361,7 @@ func calculateChain(targetFile *os.File, size int64) (string, error) {
 			if err != io.EOF {
 				log.Println(err)
 				setStatus("error could not read file (verify)")
-				return "", errors.New("could not read file (verify)")
+				return "", nil, errors.New("could not read file (verify)")
 			}
 			break
 		}
@@ -350,13 +378,24 @@ func calculateChain(targetFile *os.File, size int64) (string, error) {
 		if verifyBlockHash != currBlockHash {
 			log.Println("Bad hash at " + strconv.FormatInt(int64(index), 10))
 			setStatus("error verify failed")
-			return "", errors.New("verify failed")
+			return "", nil, errors.New("verify failed")
 		}
 
 		currBlockHash = curr.NextBlockHash
 	}
 
-	return sha256Block(prev), nil
+	return sha256Block(prev), blockMap, nil
+}
+
+func emptyCoverage(size int64) []uint64 {
+	coverage := make([]uint64, 0)
+
+	count := uint64(size) / (BUFFER_SIZE * 64)
+	if uint64(size)%(BUFFER_SIZE*64) != 0 {
+		count++
+	}
+	coverage := make([]uint64, count)
+	return coverage
 }
 
 func fullCoverage(size int64) []uint64 {
@@ -453,7 +492,7 @@ func buildPack(partyId string, path string, targetFile *os.File) {
 		}
 
 		sharedFileSize := fileInfo.Size()
-		firstBlockHash, err := calculateChain(sharedFile, sharedFileSize)
+		firstBlockHash, blockMap, err := calculateChain(sharedFile, sharedFileSize)
 		if err != nil {
 			log.Println(err)
 			setStatus(err.Error())
@@ -467,6 +506,8 @@ func buildPack(partyId string, path string, targetFile *os.File) {
 		packFileInfo.FirstBlockHash = firstBlockHash
 		packFileInfo.Size = sharedFileSize
 		packFileInfo.Coverage = fullCoverage(packFileInfo.Size)
+		packFileInfo.BlockMap = blockMap
+		packFileIngo.BlockLookup = buildBlockLookup(blockMap, firstBlockHash)
 
 		pack.Files = append(pack.Files, packFileInfo)
 	}

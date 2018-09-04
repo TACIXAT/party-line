@@ -1,13 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/kevinburke/nacl/box"
 	"github.com/kevinburke/nacl/sign"
+	"io/ioutil"
 	"log"
+	mrand "math/rand"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,11 +21,23 @@ import (
 
 var parties map[string]*PartyLine
 var pending map[string]*PartyLine
+var freshRequests map[string]*Since
+var requestChan chan *PartyRequest
+var verifiedBlockChan chan *VerifiedBlock
 
 func init() {
+	mrand.Seed(time.Now().UTC().UnixNano())
 	parties = make(map[string]*PartyLine)
 	pending = make(map[string]*PartyLine)
+	freshRequests = make(map[string]*Since)
+	requestChan = make(chan *PartyRequest)
 	go advertise()
+}
+
+type VerifiedBlock struct {
+	FileName string
+	Index    int64
+	Data     []byte
 }
 
 type PartyLine struct {
@@ -63,6 +78,19 @@ type PartyAdvertisement struct {
 	Time    time.Time
 	Hash    string
 	Pack    Pack
+}
+
+type PartyRequest struct {
+	PeerId   string
+	PackHash string
+	FileHash string
+	Coverage []uint64
+	Time     time.Time
+}
+
+type Since struct {
+	Received time.Time
+	Reported time.Time
 }
 
 func modFloor(i, m int) int {
@@ -273,10 +301,6 @@ func (party *PartyLine) SendAdvertisement(packSha256 string, pack *Pack) {
 	party.sendToNeighbors("ad", signedPartyAdvertisement)
 }
 
-func (party *PartyLine) SendRequestFile() {
-
-}
-
 func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
 	signedPartyAdvertisement := partyEnv.Data
 	jsonPartyAdvertisement := signedPartyAdvertisement[sign.SignatureSize:]
@@ -323,8 +347,8 @@ func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
 		pack = newPack
 
 		for _, file := range pack.Files {
-			file.BlockMap = make(map[string]*BlockInfo)
-			file.Coverage = make([]uint64)
+			file.BlockMap = make(map[string]BlockInfo)
+			file.Coverage = make([]uint64, 0)
 			file.Path = ""
 		}
 	}
@@ -597,7 +621,7 @@ func (party *PartyLine) StartPack(packHash string) {
 		return
 	}
 
-	destinationDirAbs := filepath.Join(partyDir, pack.Name)
+	destinationDirAbs := filepath.Join(partyDirAbs, pack.Name)
 
 	// double check in case there are tricks we don't know about
 	if !strings.HasPrefix(destinationDirAbs, partyDir) {
@@ -621,25 +645,306 @@ func (party *PartyLine) StartPack(packHash string) {
 	}
 
 	pendingFileName := filepath.Join(destinationDirAbs, pack.Name+".pending")
-	err := ioutil.WriteFile(pendingFileName, []byte(jsonPendingPack), 0644)
+	err = ioutil.WriteFile(pendingFileName, []byte(jsonPendingPack), 0644)
 	if err != nil {
 		log.Println(err)
 		setStatus("error writing pending pack to file")
 		return
 	}
 
-	pack.State = ACTIVE
-
 	pack.SetPaths(destinationDirAbs)
 
 	// write zeros to files
 	for _, file := range pack.Files {
-		// TODO: writeZeroFile(pack.Name, pack.Size)
+		writeZeroFile(file.Path, file.Size)
+		file.Coverage = emptyCoverage(file.Size)
 	}
 
+	pack.State = ACTIVE
 	// start writer go routine (somewhere else?)
 
 	// start request loop
+}
+
+func (party *PartyLine) ProcessRequest(partyEnv *PartyEnvelope) {
+	signedPartyRequest := partyEnv.Data
+	jsonPartyRequest := signedPartyRequest[sign.SignatureSize:]
+
+	partyRequest := new(PartyRequest)
+	err := json.Unmarshal(jsonPartyRequest, partyRequest)
+	if err != nil {
+		log.Println(err)
+		setStatus("error invalid json (party:request)")
+		return
+	}
+
+	min, err := idToMin(partyRequest.PeerId)
+	if err != nil {
+		setStatus("error bad id (party:announce)")
+		return
+	}
+
+	verified := sign.Verify(signedPartyRequest, min.SignPub)
+	if !verified {
+		setStatus("error questionable message integrity (party:announce)")
+		return
+	}
+
+	// check seen hash + time
+	idBytes := []byte(min.Id() + partyRequest.PackHash + partyRequest.FileHash)
+	id := sha256Bytes(idBytes)
+	since, ok := freshRequests[id]
+	if ok && (partyRequest.Time.Before(since.Reported) ||
+		time.Now().UTC().Sub(since.Received) < 5*time.Second) {
+		// request is stale ||
+		// we've seen this peer in the last 5 seconds
+		return
+	}
+
+	// forward
+	party.sendToNeighbors("request", signedPartyRequest)
+
+	// enqueue
+	now := time.Now().UTC()
+	since = new(Since)
+	since.Reported = partyRequest.Time
+	since.Received = now
+	freshRequests[id] = since
+
+	pack, ok := party.Packs[partyRequest.PackHash]
+	if !ok || pack.State == AVAILABLE {
+		// we don't have the pack
+		return
+	}
+
+	// reuse the time field as expiry, set for 6 seconds
+	partyRequest.Time = now.Add(6 * time.Second)
+
+	// TODO: send party along with request
+	requestChan <- partyRequest
+}
+
+func (party *PartyLine) SendRequest(packHash string, file *PackFileInfo) {
+	partyRequest := PartyRequest{
+		PeerId:   peerSelf.Id(),
+		PackHash: packHash,
+		FileHash: file.Hash,
+		Coverage: file.Coverage,
+		Time:     time.Now().UTC()}
+
+	jsonPartyRequest, err := json.Marshal(partyRequest)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	signedPartyRequest := sign.Sign([]byte(jsonPartyRequest), self.SignPrv)
+
+	party.sendToNeighbors("request", signedPartyRequest)
+}
+
+func (party *PartyLine) SendRequests(packHash string, pack *Pack) {
+	for _, file := range pack.Files {
+		party.SendRequest(packHash, file)
+	}
+}
+
+func (party *PartyLine) SendBlock() {
+
+}
+
+func (party *PartyLine) ProcessBlock(partyEnv *Envelope) {
+
+}
+
+func chooseBlock(request *PartyRequest) *Block {
+	// get blocks that request can verify
+	nextBlocks := make([]uint64, len(request.Coverage))
+	for majorIdx, ea := range request.Coverage {
+		for minorIdx := 0; minorIdx < 64; minorIdx++ {
+			if (ea>>minorIdx)&1 == 1 {
+				baseIdx := majorIdx * 64
+
+				next := baseIdx + minorIdx + 1
+				nextMajorIdx := next / 64
+				nextMinorIdx := next % 64
+				nextBlocks[nextMajorIdx] |= (1 << nextMinorIdx)
+
+				left := leftChild(baseIdx + minorIdx)
+				leftMajorIdx := left / 64
+				leftMinorIdx := left % 64
+				nextBlocks[leftMajorIdx] |= (1 << leftMinorIdx)
+
+				right := rightChild(baseIdx + minorIdx)
+				rightMajorIdx := right / 64
+				rightMinorIdx := right % 64
+				nextBlocks[rightMajorIdx] |= (1 << rightMinorIdx)
+			}
+		}
+	}
+
+	blockIndices := make([]uint64)
+	selfCoverage := party.Packs[packHash].Files[fileHash].Coverage
+
+	// xor with self coverage to find candidates to send
+	for majorIdx, _ := range nextBlocks {
+		nextBlocks[majorIdx] ^= selfCoverage[majorIdx]
+		for minorIdx := 0; minorIdx < 64; minorIdx++ {
+			if (nextBlocks[majorIdx]>>minorIdx)&1 == 1 {
+				blockIndices = append(blockIndices, majorIdx*64+minorIdx)
+			}
+		}
+	}
+
+	// choose random candidate
+	mrandIdx := mrand.Intn(len(blockIndices))
+
+	// get block
+	// TODO: check err
+	// TODO: need party
+	packFileInfo := party.Packs[packHash].Files[fileHash]
+	blockHash := packFileInfo.BlockLookup[mrandIdx]
+	blockInfo := packFileInfo.BlockMap[blockHash]
+
+	// read data from disk
+	// open file
+	// seek
+	// read
+
+	return block
+}
+
+func fileRequester() {
+	for {
+		for _, party := range parties {
+			for packHash, pack := range party.Packs {
+				if pack.State == ACTIVE {
+					party.SendRequests(packHash, pack)
+				}
+			}
+		}
+		time.Sleep(5 * time.Second)
+	}
+}
+
+func requestSender() {
+	for {
+		request := <-requestChan
+		if time.Now().UTC().After(request.Time) {
+			// skip if expiry
+			continue
+		}
+
+		// choose block
+		block := chooseBlock(request)
+
+		// send block
+		party.SendBlock(request, block)
+
+		// mark coverage
+
+		// requeue
+		requestChan <- request
+	}
+}
+
+func haveBlock(verifiedBlock *VerifiedBlock) bool {
+	return false
+}
+
+func setBlockWritten(verifiedBlock *VerifiedBlock) {
+
+}
+
+func verifiedBlockWriter() {
+	for {
+		verifiedBlock := <-verifiedBlockChan
+
+		if haveBlock(verifiedBlock) {
+			continue
+		}
+
+		f, err := os.OpenFile(verifiedBlock.FileName, os.O_RDWR|os.O_CREATE, 0755)
+		if err != nil {
+			log.Println(err)
+			setStatus("error wrting block")
+			continue
+		}
+
+		// seek block
+		offset := BUFFER_SIZE * verifiedBlock.Index
+		pos, err := f.Seek(offset, os.SEEK_SET)
+		if err != nil || pos != offset {
+			if err != nil {
+				log.Println(err)
+			}
+			setStatus("error seeking in file")
+			continue
+		}
+
+		// write block
+		count, err := f.Write(verifiedBlock.Data)
+		if err != nil || count != len(verifiedBlock.Data) {
+			if err != nil {
+				log.Println(err)
+			}
+			setStatus("error writing to file")
+			continue
+		}
+
+		err := f.Close()
+		if err != nil {
+			log.Println(err)
+			setStatus("error closing file")
+			continue
+		}
+
+		setBlockWritten(verifiedBlock)
+	}
+}
+
+func writeZeroFile(name string, size int64) {
+	setStatus("writing empty file for " + name)
+	f, err := os.Create(name)
+	if err != nil {
+		log.Println(err)
+		setStatus("error when prepping file")
+		return
+	}
+
+	defer f.Close()
+
+	single := []byte{0}
+	mb100 := 102400000
+	buf100 := bytes.Repeat(single, mb100)
+
+	remaining := size
+	for remaining > int64(mb100) {
+		n, err := f.Write(buf100)
+		if err != nil || n != mb100 {
+			if err != nil {
+				log.Println(err)
+			}
+			setStatus("error writing empty file")
+			return
+		}
+		remaining -= int64(mb100)
+	}
+
+	if remaining > 0 {
+		bufRemaining := bytes.Repeat(single, int(remaining))
+		n, err := f.Write(bufRemaining)
+		if err != nil || int64(n) != remaining {
+			if err != nil {
+				log.Println(err)
+			}
+			setStatus("error writing empty file")
+			return
+		}
+	}
+
+	f.Sync()
+	setStatus("empty file written for " + name)
 }
 
 func advertiseAll() {
