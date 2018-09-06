@@ -763,11 +763,54 @@ func (party *PartyLine) SendRequests(packHash string, pack *Pack) {
 	}
 }
 
-func (party *PartyLine) SendBlock() {
+func (party *PartyLine) SendFulfillment(request *PartyRequest, block *Block) {
+	partyFulfillment := PartyFulfillment{
+		PeerId:   peerSelf.Id(),
+		PackHash: request.PackHash,
+		FileHash: request.FileHash,
+		PartyId:  party.Id,
+		Block:    *block}
 
+	jsonPartyFulfillment, err := json.Marshal(partyFulfillment)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	signedPartyFulfillment :=
+		sign.Sign([]byte(jsonPartyFulfillment), self.SignPrv)
+
+	env := Envelope{
+		Type: "party",
+		From: peerSelf.Id(),
+		To:   request.PeerId}
+
+	partyEnv := PartyEnvelope{
+		Type:    "fulfillment",
+		From:    peerSelf.Id(),
+		PartyId: party.Id}
+
+	partyEnv.Data = signedPartyFulfillment
+
+	jsonPartyEnv, err := json.Marshal(partyEnv)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	min, err := idToMin(request.PeerId)
+	if err != nil {
+		setStatus(err.Error())
+		continue
+	}
+
+	closed := box.EasySeal([]byte(jsonPartyEnv), min.EncPub, self.EncPrv)
+	env.Data = closed
+
+	route(&env)
 }
 
-func (party *PartyLine) ProcessBlock(partyEnv *Envelope) {
+func (party *PartyLine) ProcessFulfillment(partyEnv *Envelope) {
 
 }
 

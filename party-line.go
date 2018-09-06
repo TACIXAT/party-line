@@ -35,20 +35,6 @@ TODO:
 
 	measure block packet size
 	increase block size
-
-	request{coverage map, peer info, expiry}
-
-	receive request
-	if requests from id in last interval
-		drop request
-
-	enqueue request
-
-	loop
-	pop front requests
-	pick block
-	send block
-	requeue request if not expired
 */
 
 type Self struct {
