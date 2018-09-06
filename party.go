@@ -86,6 +86,7 @@ type PartyRequest struct {
 	FileHash string
 	Coverage []uint64
 	Time     time.Time
+	PartyId  string
 }
 
 type Since struct {
@@ -680,18 +681,25 @@ func (party *PartyLine) ProcessRequest(partyEnv *PartyEnvelope) {
 
 	min, err := idToMin(partyRequest.PeerId)
 	if err != nil {
-		setStatus("error bad id (party:announce)")
+		setStatus("error bad id (party:request)")
 		return
 	}
 
 	verified := sign.Verify(signedPartyRequest, min.SignPub)
 	if !verified {
-		setStatus("error questionable message integrity (party:announce)")
+		setStatus("error questionable message integrity (party:request)")
+		return
+	}
+
+	if partyRequest.PartyId != party.Id {
+		setStatus("error invalid party id (party:request)")
 		return
 	}
 
 	// check seen hash + time
-	idBytes := []byte(min.Id() + partyRequest.PackHash + partyRequest.FileHash)
+	uniqueId = min.Id() + party.Id
+	uniqueId += partyRequest.PackHash + partyRequest.FileHash
+	idBytes := []byte(uniqueId)
 	id := sha256Bytes(idBytes)
 	since, ok := freshRequests[id]
 	if ok && (partyRequest.Time.Before(since.Reported) ||
@@ -717,10 +725,15 @@ func (party *PartyLine) ProcessRequest(partyEnv *PartyEnvelope) {
 		return
 	}
 
+	found := false
+	if pack.GetFileInfo(partyRequest.FileHash) == nil {
+		// we don't have the pack
+		return
+	}
+
 	// reuse the time field as expiry, set for 6 seconds
 	partyRequest.Time = now.Add(6 * time.Second)
 
-	// TODO: send party along with request
 	requestChan <- partyRequest
 }
 
@@ -730,7 +743,8 @@ func (party *PartyLine) SendRequest(packHash string, file *PackFileInfo) {
 		PackHash: packHash,
 		FileHash: file.Hash,
 		Coverage: file.Coverage,
-		Time:     time.Now().UTC()}
+		Time:     time.Now().UTC(),
+		PartyId:  party.Id}
 
 	jsonPartyRequest, err := json.Marshal(partyRequest)
 	if err != nil {
@@ -784,7 +798,9 @@ func chooseBlock(request *PartyRequest) *Block {
 	}
 
 	blockIndices := make([]uint64)
-	selfCoverage := party.Packs[packHash].Files[fileHash].Coverage
+	pack := party.Packs[request.PackHash]
+	packFileInfo := pack.GetFileInfo(request.FileHash)
+	selfCoverage := file.Coverage
 
 	// xor with self coverage to find candidates to send
 	for majorIdx, _ := range nextBlocks {
@@ -800,16 +816,45 @@ func chooseBlock(request *PartyRequest) *Block {
 	mrandIdx := mrand.Intn(len(blockIndices))
 
 	// get block
-	// TODO: check err
-	// TODO: need party
-	packFileInfo := party.Packs[packHash].Files[fileHash]
-	blockHash := packFileInfo.BlockLookup[mrandIdx]
-	blockInfo := packFileInfo.BlockMap[blockHash]
+	blockHash, ok := packFileInfo.BlockLookup[mrandIdx]
+	if !ok {
+		log.Println("error block hash not found")
+		return
+	}
+
+	blockInfo, ok := packFileInfo.BlockMap[blockHash]
+	if !ok {
+		log.Println("error block info not found")
+		return
+	}
 
 	// read data from disk
-	// open file
-	// seek
-	// read
+	file, err := os.Open(packFileInfo.Path)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	off, err := file.Seek(mrandIdx*BUFFER_SIZE, os.SEEK_SET)
+	if err != nil || off != mrandIdx*BUFFER_SIZE {
+		if err != nil {
+			log.Println(err)
+		}
+		return
+	}
+
+	buffer := make([]byte, BUFFER_SIZE)
+	bytesRead, err := file.Read(buffer)
+	if err != nil && err != io.EOF {
+		log.Println(err)
+		return
+	}
+
+	block := blockInfo.ToBlock(buffer[:bytesRead])
+	if block.DataHash != sha256Bytes(block.Data) {
+		log.Println("error data hash does not equal hash of data")
+		return
+	}
 
 	return block
 }
@@ -842,6 +887,9 @@ func requestSender() {
 		party.SendBlock(request, block)
 
 		// mark coverage
+		majorIdx := block.Index / 64
+		minorIdx := block.Index % 64
+		request.Coverage[majorIdx] |= (1 << minorIdx)
 
 		// requeue
 		requestChan <- request
@@ -864,7 +912,8 @@ func verifiedBlockWriter() {
 			continue
 		}
 
-		f, err := os.OpenFile(verifiedBlock.FileName, os.O_RDWR|os.O_CREATE, 0755)
+		mode := os.O_RDWR | os.O_CREATE
+		f, err := os.OpenFile(verifiedBlock.FileName, mode, 0755)
 		if err != nil {
 			log.Println(err)
 			setStatus("error wrting block")

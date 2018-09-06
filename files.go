@@ -72,6 +72,7 @@ type PendingPack struct {
 	Files []PendingFile
 }
 
+// mirror of PackFileInfo so we can serialize to disko
 type PendingFile struct {
 	Name           string
 	Hash           string
@@ -106,6 +107,17 @@ func (pack *Pack) ToPendingPack() *PendingPack {
 	}
 
 	return pendingPack
+}
+
+func (pack *Pack) GetFileInfo(fileHash string) *PackFileInfo {
+	found := false
+	for _, packFileInfo := range party.Packs[partyRequest.PackHash].Files {
+		if packFileInfo.Hash == partyRequest.FileHash {
+			return packFileInfo
+		}
+	}
+
+	return nil
 }
 
 func (pack *Pack) SetPaths(baseDir string) {
@@ -148,7 +160,19 @@ func (block *Block) ToBlockInfo() *BlockInfo {
 	return blockInfo
 }
 
-func buildBlockLookup(blockMap map[string]*BlockInfo, firstBlockHash string) map[uint64]string {
+func (blockInfo *BlockInfo) ToBlock(data []byte) *Block {
+	block := new(Block)
+	block.Index = blockInfo.Index
+	block.NextBlockHash = blockInfo.NextBlockHash
+	block.LeftBlockHash = blockInfo.LeftBlockHash
+	block.RightBlockHash = blockInfo.RightBlockHash
+	block.DataHash = blockInfo.DataHash
+	block.Data = data
+	return block
+}
+
+func buildBlockLookup(
+	blockMap map[string]*BlockInfo, firstBlockHash string) map[uint64]string {
 	currBlockHash := firstBlockHash
 	idx := 0
 	blockLookup := make(map[uint64]string)
@@ -291,7 +315,8 @@ func rightChild(i int64) int64 {
 	return 2*i + 2
 }
 
-func calculateChain(targetFile *os.File, size int64) (string, map[string]BlockInfo, error) {
+func calculateChain(
+	targetFile *os.File, size int64) (string, map[string]BlockInfo, error) {
 	if size < 0 {
 		setStatus("error file size less than 0 (c'est une pipe?)")
 		return "", nil, errors.New("file size less than 0")
@@ -437,6 +462,7 @@ func buildPack(partyId string, path string, targetFile *os.File) {
 	pack.Peers = make(map[string]time.Time)
 	pack.Peers[peerSelf.Id()] = time.Now().UTC()
 	pack.State = COMPLETE
+	pack.Files = make([]*PackFileInfo, 0)
 
 	dotPack, err := unpackFile(targetFile)
 	if err != nil {
@@ -492,7 +518,8 @@ func buildPack(partyId string, path string, targetFile *os.File) {
 		}
 
 		sharedFileSize := fileInfo.Size()
-		firstBlockHash, blockMap, err := calculateChain(sharedFile, sharedFileSize)
+		firstBlockHash, blockMap, err :=
+			calculateChain(sharedFile, sharedFileSize)
 		if err != nil {
 			log.Println(err)
 			setStatus(err.Error())
