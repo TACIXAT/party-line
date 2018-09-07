@@ -276,6 +276,8 @@ func sha256Block(block *Block) string {
 	hash := sha256.New()
 	hash.Write([]byte(strconv.FormatUint(block.Index, 10)))
 	hash.Write([]byte(block.NextBlockHash))
+	hash.Write([]byte(block.LeftBlockHash))
+	hash.Write([]byte(block.RightBlockHash))
 	hash.Write([]byte(block.DataHash))
 	hash.Write(block.Data)
 	return fmt.Sprintf("%x", hash.Sum(nil))
@@ -305,6 +307,23 @@ func unpackFile(targetFile *os.File) (*DotPack, error) {
 	}
 
 	return dotPack, nil
+}
+
+func leftParent(i int64) int64 {
+	return (i - 1) / 2
+}
+
+func rightParent(i int64) int64 {
+	return (i - 2) / 2
+}
+
+func treeParent(i int64) int64 {
+	// I think left parent works for both cases cause math
+	if i % 2 {
+		return leftParent(i)
+	}
+
+	return rightParent(i)
 }
 
 func leftChild(i int64) int64 {

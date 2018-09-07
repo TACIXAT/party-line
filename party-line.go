@@ -35,8 +35,6 @@ TODO:
 
 	measure block packet size
 	increase block size
-
-	route messages never forward???
 */
 
 type Self struct {

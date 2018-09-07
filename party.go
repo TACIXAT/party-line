@@ -35,9 +35,9 @@ func init() {
 }
 
 type VerifiedBlock struct {
-	FileName string
-	Index    int64
-	Data     []byte
+	Path  string
+	Index int64
+	Data  []byte
 }
 
 type PartyLine struct {
@@ -87,6 +87,14 @@ type PartyRequest struct {
 	Coverage []uint64
 	Time     time.Time
 	PartyId  string
+}
+
+type PartyFulfillment struct {
+	PeerId   string
+	PackHash string
+	FileHash string
+	PartyId  string
+	Block    Block
 }
 
 type Since struct {
@@ -725,9 +733,8 @@ func (party *PartyLine) ProcessRequest(partyEnv *PartyEnvelope) {
 		return
 	}
 
-	found := false
 	if pack.GetFileInfo(partyRequest.FileHash) == nil {
-		// we don't have the pack
+		// we don't have the file
 		return
 	}
 
@@ -807,11 +814,129 @@ func (party *PartyLine) SendFulfillment(request *PartyRequest, block *Block) {
 	closed := box.EasySeal([]byte(jsonPartyEnv), min.EncPub, self.EncPrv)
 	env.Data = closed
 
+	jsonEnv, err := json.Marshal(env)
+	if err == nil {
+		log.Printf("Size of fulfillment: %d", len(jsonEnv)+1)
+	}
+
 	route(&env)
 }
 
-func (party *PartyLine) ProcessFulfillment(partyEnv *Envelope) {
+type PartyFulfillment struct {
+	PeerId   string
+	PackHash string
+	FileHash string
+	PartyId  string
+	Block    Block
+}
 
+func (party *PartyLine) ProcessFulfillment(partyEnv *Envelope) {
+	signedPartyFulfillment := partyEnv.Data
+	jsonPartyFulfillment := signedPartyFulfillment[sign.SignatureSize:]
+
+	partyFulfillment := new(PartyFulfillment)
+	err := json.Unmarshal(jsonPartyFulfillment, partyFulfillment)
+	if err != nil {
+		log.Println(err)
+		setStatus("error invalid json (party:fulfillment)")
+		return
+	}
+
+	min, err := idToMin(partyRequest.PeerId)
+	if err != nil {
+		setStatus("error bad id (party:fulfillment)")
+		return
+	}
+
+	verified := sign.Verify(signedPartyFulfillment, min.SignPub)
+	if !verified {
+		setStatus("error questionable message integrity (party:fulfillment)")
+		return
+	}
+
+	if partyFulfillment.PartyId != party.Id {
+		// wrong party ??!?
+		return
+	}
+
+	pack, ok := party.Packs[partyFulfillment.PackHash]
+	if !ok || pack.State != ACTIVE {
+		// we aren't downloading the pack
+		return
+	}
+
+	packFileInfo := pack.GetFileInfo(partyFulfillment.FileHash)
+	if packFileInfo == nil {
+		// we don't have the file
+		return
+	}
+
+	block := partyFulfillment.Block
+
+	dataHash := sha256Bytes(block.Data)
+	if dataHash != block.DataHash {
+		// invalid data hash
+		return
+	}
+
+	blockHash := sha256Block(&block)
+
+	// verify block hash
+	if block.Index == 0 {
+		if blockHash != packFileInfo.FirstBlockHash {
+			return
+		}
+	} else {
+		checkBlockHash := ""
+
+		prevIndex := block.Index - 1
+		prevBlockHash, ok := pack.BlockLookup[predIndex]
+		if ok {
+			prevParentBlock, ok := pack.BlockMap[prevBlockHash]
+			if ok {
+				checkBlockHash = parentBlock.NextBlockHash
+			}
+		}
+
+		treeIndex := treeParent(block.Index)
+		treeBlockHash, ok := pack.BlockLookup[treeIndex]
+		if ok {
+			treeParentBlock, ok := pack.BlockMap[treeBlockHash]
+			if ok {
+				childBlockHash := ""
+				if block.Index % 2 {
+					childBlockHash = treeParentBlock.LeftBlockHash
+				} else {
+					childBlockHash = treeParentBlock.RightBlockHash
+				}
+
+				if checkBlockHash != "" && checkBlockHash != childBlockHash {
+					// disagreement between prev and tree parents
+					return
+				}
+
+				checkBlockHash = childBlockHash
+			}
+		}
+
+		if checkBlockHash == "" {
+			// cannot verify
+			return
+		}
+
+		if checkBlockHash != blockHash {
+			// invalid block hash
+			return
+		}
+	} // verified
+
+	// create verified block
+	verifiedBlock := new(VerifiedBlock)
+	verifiedBlock.Data = block.Data
+	verifiedBlock.Index = block.Index
+	verifiedBlock.Path = packFileInfo.Path
+
+	verifiedBlockChan <- verifiedBlock
 }
 
 func chooseBlock(request *PartyRequest) *Block {
@@ -956,7 +1081,7 @@ func verifiedBlockWriter() {
 		}
 
 		mode := os.O_RDWR | os.O_CREATE
-		f, err := os.OpenFile(verifiedBlock.FileName, mode, 0755)
+		f, err := os.OpenFile(verifiedBlock.Path, mode, 0755)
 		if err != nil {
 			log.Println(err)
 			setStatus("error wrting block")
