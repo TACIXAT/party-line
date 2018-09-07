@@ -19,6 +19,18 @@ func processMessage(strMsg string) {
 		return
 	}
 
+	if !env.Time.IsZero() && env.To != peerSelf.Id() {
+		_, seen := noReroute[env.Time]
+		if !seen {
+			return
+		}
+
+		noReroute[env.Time] = true
+
+		route(&env)
+		return
+	}
+
 	switch env.Type {
 	case "announce":
 		processAnnounce(env)
@@ -59,7 +71,8 @@ func verifyEnvelope(env *Envelope, caller string) ([]byte, error) {
 	data := env.Data
 	verified := sign.Verify(data, min.SignPub)
 	if !verified {
-		return nil, errors.New(fmt.Sprintf("questionable message integrity discarding (%s)", caller))
+		return nil, errors.New(
+			fmt.Sprintf("questionable message integrity discarding (%s)", caller))
 	}
 
 	jsonData := data[sign.SignatureSize:]

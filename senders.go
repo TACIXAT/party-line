@@ -13,19 +13,11 @@ import (
 )
 
 func route(env *Envelope) {
+	if env.Time.IsZero() {
+		env.Time = time.Now().UTC()
+	}
+
 	jsonEnv, err := json.Marshal(env)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	idShortString, err := idFront(env.To)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	idShortBytes, err := hex.DecodeString(idShortString)
 	if err != nil {
 		log.Println(err)
 		return
@@ -50,7 +42,7 @@ func route(env *Envelope) {
 	selfDist.SetBytes(peerSelf.SignPub)
 	selfDist.Xor(selfDist, idInt)
 
-	closest := findClosestN(idShortBytes, 3)
+	closest := findClosestN(bytesId, 3)
 	for _, peerEntry := range closest {
 		peer := peerEntry.Peer
 		if peer != nil {

@@ -5,6 +5,10 @@ import (
 	"time"
 )
 
+type Test struct {
+	Time time.Time
+}
+
 func main() {
 	fmt.Println(time.Now().Format("15:04:05"))
 
@@ -29,4 +33,10 @@ func main() {
 
 	fmt.Println(t1, t2)
 	fmt.Println(t1.Equal(*t2))
+
+	fmt.Println("== IsZero ==")
+	test := new(Test)
+	fmt.Println(test.Time.IsZero())
+	test.Time = time.Now().UTC()
+	fmt.Println(test.Time.IsZero())
 }

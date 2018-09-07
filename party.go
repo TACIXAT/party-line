@@ -764,6 +764,16 @@ func (party *PartyLine) SendRequests(packHash string, pack *Pack) {
 }
 
 func (party *PartyLine) SendFulfillment(request *PartyRequest, block *Block) {
+	env := Envelope{
+		Type: "party",
+		From: peerSelf.Id(),
+		To:   request.PeerId}
+
+	partyEnv := PartyEnvelope{
+		Type:    "fulfillment",
+		From:    peerSelf.Id(),
+		PartyId: party.Id}
+
 	partyFulfillment := PartyFulfillment{
 		PeerId:   peerSelf.Id(),
 		PackHash: request.PackHash,
@@ -779,16 +789,6 @@ func (party *PartyLine) SendFulfillment(request *PartyRequest, block *Block) {
 
 	signedPartyFulfillment :=
 		sign.Sign([]byte(jsonPartyFulfillment), self.SignPrv)
-
-	env := Envelope{
-		Type: "party",
-		From: peerSelf.Id(),
-		To:   request.PeerId}
-
-	partyEnv := PartyEnvelope{
-		Type:    "fulfillment",
-		From:    peerSelf.Id(),
-		PartyId: party.Id}
 
 	partyEnv.Data = signedPartyFulfillment
 

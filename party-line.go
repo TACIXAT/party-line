@@ -35,6 +35,8 @@ TODO:
 
 	measure block packet size
 	increase block size
+
+	route messages never forward???
 */
 
 type Self struct {
@@ -86,6 +88,7 @@ type Envelope struct {
 	From string
 	To   string
 	Data []byte
+	Time time.Time
 }
 
 type MessageSuggestions struct {
