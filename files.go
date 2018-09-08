@@ -110,9 +110,8 @@ func (pack *Pack) ToPendingPack() *PendingPack {
 }
 
 func (pack *Pack) GetFileInfo(fileHash string) *PackFileInfo {
-	found := false
-	for _, packFileInfo := range party.Packs[partyRequest.PackHash].Files {
-		if packFileInfo.Hash == partyRequest.FileHash {
+	for _, packFileInfo := range pack.Files {
+		if packFileInfo.Hash == fileHash {
 			return packFileInfo
 		}
 	}
@@ -172,9 +171,9 @@ func (blockInfo *BlockInfo) ToBlock(data []byte) *Block {
 }
 
 func buildBlockLookup(
-	blockMap map[string]*BlockInfo, firstBlockHash string) map[uint64]string {
+	blockMap map[string]BlockInfo, firstBlockHash string) map[uint64]string {
 	currBlockHash := firstBlockHash
-	idx := 0
+	var idx uint64 = 0
 	blockLookup := make(map[uint64]string)
 	for currBlockHash != "" {
 		blockLookup[idx] = currBlockHash
@@ -309,28 +308,28 @@ func unpackFile(targetFile *os.File) (*DotPack, error) {
 	return dotPack, nil
 }
 
-func leftParent(i int64) int64 {
+func leftParent(i uint64) uint64 {
 	return (i - 1) / 2
 }
 
-func rightParent(i int64) int64 {
+func rightParent(i uint64) uint64 {
 	return (i - 2) / 2
 }
 
-func treeParent(i int64) int64 {
+func treeParent(i uint64) uint64 {
 	// I think left parent works for both cases cause math
-	if i % 2 {
+	if i%2 == 1 {
 		return leftParent(i)
 	}
 
 	return rightParent(i)
 }
 
-func leftChild(i int64) int64 {
+func leftChild(i uint64) uint64 {
 	return 2*i + 1
 }
 
-func rightChild(i int64) int64 {
+func rightChild(i uint64) uint64 {
 	return 2*i + 2
 }
 
@@ -356,7 +355,7 @@ func calculateChain(
 		return "", nil, errors.New("seek failed for file")
 	}
 
-	skips := make(map[int64]string)
+	skips := make(map[uint64]string)
 
 	// read backward
 	for index > -1 {
@@ -375,15 +374,15 @@ func calculateChain(
 		curr.Data = buffer[:bytesRead]
 		curr.DataHash = sha256Buffer
 		curr.NextBlockHash = sha256Block(prev)
-		curr.LeftBlockHash = skips[leftChild(index)]
-		curr.RightBlockHash = skips[rightChild(index)]
+		curr.LeftBlockHash = skips[leftChild(curr.Index)]
+		curr.RightBlockHash = skips[rightChild(curr.Index)]
 
 		blockHash := sha256Block(curr)
 		blocks[blockHash] = curr
 		blockMap[blockHash] = *curr.ToBlockInfo()
 
 		prev = curr
-		skips[index] = blockHash
+		skips[curr.Index] = blockHash
 
 		index--
 		_, err = targetFile.Seek(-(int64(bytesRead) + BUFFER_SIZE), 1)
@@ -432,8 +431,6 @@ func calculateChain(
 }
 
 func emptyCoverage(size int64) []uint64 {
-	coverage := make([]uint64, 0)
-
 	count := uint64(size) / (BUFFER_SIZE * 64)
 	if uint64(size)%(BUFFER_SIZE*64) != 0 {
 		count++
@@ -553,7 +550,7 @@ func buildPack(partyId string, path string, targetFile *os.File) {
 		packFileInfo.Size = sharedFileSize
 		packFileInfo.Coverage = fullCoverage(packFileInfo.Size)
 		packFileInfo.BlockMap = blockMap
-		packFileIngo.BlockLookup = buildBlockLookup(blockMap, firstBlockHash)
+		packFileInfo.BlockLookup = buildBlockLookup(blockMap, firstBlockHash)
 
 		pack.Files = append(pack.Files, packFileInfo)
 	}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/kevinburke/nacl/box"
 	"github.com/kevinburke/nacl/sign"
+	"io"
 	"io/ioutil"
 	"log"
 	mrand "math/rand"
@@ -35,9 +36,10 @@ func init() {
 }
 
 type VerifiedBlock struct {
-	Path  string
-	Index int64
-	Data  []byte
+	Path     string
+	Index    uint64
+	Data     []byte
+	Coverage []uint64
 }
 
 type PartyLine struct {
@@ -705,7 +707,7 @@ func (party *PartyLine) ProcessRequest(partyEnv *PartyEnvelope) {
 	}
 
 	// check seen hash + time
-	uniqueId = min.Id() + party.Id
+	uniqueId := min.Id() + party.Id
 	uniqueId += partyRequest.PackHash + partyRequest.FileHash
 	idBytes := []byte(uniqueId)
 	id := sha256Bytes(idBytes)
@@ -808,7 +810,7 @@ func (party *PartyLine) SendFulfillment(request *PartyRequest, block *Block) {
 	min, err := idToMin(request.PeerId)
 	if err != nil {
 		setStatus(err.Error())
-		continue
+		return
 	}
 
 	closed := box.EasySeal([]byte(jsonPartyEnv), min.EncPub, self.EncPrv)
@@ -820,14 +822,6 @@ func (party *PartyLine) SendFulfillment(request *PartyRequest, block *Block) {
 	}
 
 	route(&env)
-}
-
-type PartyFulfillment struct {
-	PeerId   string
-	PackHash string
-	FileHash string
-	PartyId  string
-	Block    Block
 }
 
 func (party *PartyLine) ProcessFulfillment(partyEnv *Envelope) {
@@ -842,7 +836,7 @@ func (party *PartyLine) ProcessFulfillment(partyEnv *Envelope) {
 		return
 	}
 
-	min, err := idToMin(partyRequest.PeerId)
+	min, err := idToMin(partyFulfillment.PeerId)
 	if err != nil {
 		setStatus("error bad id (party:fulfillment)")
 		return
@@ -871,6 +865,8 @@ func (party *PartyLine) ProcessFulfillment(partyEnv *Envelope) {
 		return
 	}
 
+	// TODO: check have block
+
 	block := partyFulfillment.Block
 
 	dataHash := sha256Bytes(block.Data)
@@ -890,21 +886,21 @@ func (party *PartyLine) ProcessFulfillment(partyEnv *Envelope) {
 		checkBlockHash := ""
 
 		prevIndex := block.Index - 1
-		prevBlockHash, ok := pack.BlockLookup[predIndex]
+		prevBlockHash, ok := packFileInfo.BlockLookup[prevIndex]
 		if ok {
-			prevParentBlock, ok := pack.BlockMap[prevBlockHash]
+			prevParentBlock, ok := packFileInfo.BlockMap[prevBlockHash]
 			if ok {
-				checkBlockHash = parentBlock.NextBlockHash
+				checkBlockHash = prevParentBlock.NextBlockHash
 			}
 		}
 
 		treeIndex := treeParent(block.Index)
-		treeBlockHash, ok := pack.BlockLookup[treeIndex]
+		treeBlockHash, ok := packFileInfo.BlockLookup[treeIndex]
 		if ok {
-			treeParentBlock, ok := pack.BlockMap[treeBlockHash]
+			treeParentBlock, ok := packFileInfo.BlockMap[treeBlockHash]
 			if ok {
 				childBlockHash := ""
-				if block.Index % 2 {
+				if block.Index%2 == 1 {
 					childBlockHash = treeParentBlock.LeftBlockHash
 				} else {
 					childBlockHash = treeParentBlock.RightBlockHash
@@ -935,17 +931,19 @@ func (party *PartyLine) ProcessFulfillment(partyEnv *Envelope) {
 	verifiedBlock.Data = block.Data
 	verifiedBlock.Index = block.Index
 	verifiedBlock.Path = packFileInfo.Path
+	verifiedBlock.Coverage = packFileInfo.Coverage
 
 	verifiedBlockChan <- verifiedBlock
 }
 
-func chooseBlock(request *PartyRequest) *Block {
+func (party *PartyLine) chooseBlock(request *PartyRequest) *Block {
 	// get blocks that request can verify
 	nextBlocks := make([]uint64, len(request.Coverage))
 	for majorIdx, ea := range request.Coverage {
-		for minorIdx := 0; minorIdx < 64; minorIdx++ {
+		var minorIdx uint64
+		for minorIdx = 0; minorIdx < 64; minorIdx++ {
 			if (ea>>minorIdx)&1 == 1 {
-				baseIdx := majorIdx * 64
+				baseIdx := uint64(majorIdx) * 64
 
 				next := baseIdx + minorIdx + 1
 				nextMajorIdx := next / 64
@@ -965,17 +963,18 @@ func chooseBlock(request *PartyRequest) *Block {
 		}
 	}
 
-	blockIndices := make([]uint64)
+	blockIndices := make([]uint64, 0)
 	pack := party.Packs[request.PackHash]
 	packFileInfo := pack.GetFileInfo(request.FileHash)
-	selfCoverage := file.Coverage
+	selfCoverage := packFileInfo.Coverage
 
 	// xor with self coverage to find candidates to send
 	for majorIdx, _ := range nextBlocks {
 		nextBlocks[majorIdx] ^= selfCoverage[majorIdx]
-		for minorIdx := 0; minorIdx < 64; minorIdx++ {
+		var minorIdx uint64
+		for minorIdx = 0; minorIdx < 64; minorIdx++ {
 			if (nextBlocks[majorIdx]>>minorIdx)&1 == 1 {
-				blockIndices = append(blockIndices, majorIdx*64+minorIdx)
+				blockIndices = append(blockIndices, uint64(majorIdx)*64+minorIdx)
 			}
 		}
 	}
@@ -984,44 +983,44 @@ func chooseBlock(request *PartyRequest) *Block {
 	mrandIdx := mrand.Intn(len(blockIndices))
 
 	// get block
-	blockHash, ok := packFileInfo.BlockLookup[mrandIdx]
+	blockHash, ok := packFileInfo.BlockLookup[uint64(mrandIdx)]
 	if !ok {
 		log.Println("error block hash not found")
-		return
+		return nil
 	}
 
 	blockInfo, ok := packFileInfo.BlockMap[blockHash]
 	if !ok {
 		log.Println("error block info not found")
-		return
+		return nil
 	}
 
 	// read data from disk
 	file, err := os.Open(packFileInfo.Path)
 	if err != nil {
 		log.Println(err)
-		return
+		return nil
 	}
 
-	off, err := file.Seek(mrandIdx*BUFFER_SIZE, os.SEEK_SET)
-	if err != nil || off != mrandIdx*BUFFER_SIZE {
+	off, err := file.Seek(int64(mrandIdx)*BUFFER_SIZE, os.SEEK_SET)
+	if err != nil || off != int64(mrandIdx)*BUFFER_SIZE {
 		if err != nil {
 			log.Println(err)
 		}
-		return
+		return nil
 	}
 
 	buffer := make([]byte, BUFFER_SIZE)
 	bytesRead, err := file.Read(buffer)
 	if err != nil && err != io.EOF {
 		log.Println(err)
-		return
+		return nil
 	}
 
 	block := blockInfo.ToBlock(buffer[:bytesRead])
 	if block.DataHash != sha256Bytes(block.Data) {
 		log.Println("error data hash does not equal hash of data")
-		return
+		return nil
 	}
 
 	return block
@@ -1048,11 +1047,16 @@ func requestSender() {
 			continue
 		}
 
+		party := parties[request.PartyId]
+
 		// choose block
-		block := chooseBlock(request)
+		block := party.chooseBlock(request)
+		if block == nil {
+			continue
+		}
 
 		// send block
-		party.SendBlock(request, block)
+		party.SendFulfillment(request, block)
 
 		// mark coverage
 		majorIdx := block.Index / 64
@@ -1069,7 +1073,9 @@ func haveBlock(verifiedBlock *VerifiedBlock) bool {
 }
 
 func setBlockWritten(verifiedBlock *VerifiedBlock) {
-
+	majorIdx := verifiedBlock.Index / 64
+	minorIdx := verifiedBlock.Index % 64
+	verifiedBlock.Coverage[majorIdx] |= (1 << minorIdx)
 }
 
 func verifiedBlockWriter() {
@@ -1090,8 +1096,8 @@ func verifiedBlockWriter() {
 
 		// seek block
 		offset := BUFFER_SIZE * verifiedBlock.Index
-		pos, err := f.Seek(offset, os.SEEK_SET)
-		if err != nil || pos != offset {
+		pos, err := f.Seek(int64(offset), os.SEEK_SET)
+		if err != nil || pos != int64(offset) {
 			if err != nil {
 				log.Println(err)
 			}
@@ -1109,7 +1115,7 @@ func verifiedBlockWriter() {
 			continue
 		}
 
-		err := f.Close()
+		err = f.Close()
 		if err != nil {
 			log.Println(err)
 			setStatus("error closing file")

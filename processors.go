@@ -10,6 +10,12 @@ import (
 	"time"
 )
 
+var noReroute map[time.Time]bool
+
+func init() {
+	noReroute = make(map[time.Time]bool)
+}
+
 func processMessage(strMsg string) {
 	env := new(Envelope)
 	err := json.Unmarshal([]byte(strMsg), env)
@@ -27,7 +33,7 @@ func processMessage(strMsg string) {
 
 		noReroute[env.Time] = true
 
-		route(&env)
+		route(env)
 		return
 	}
 
