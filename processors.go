@@ -21,6 +21,7 @@ func processMessage(strMsg string) {
 	err := json.Unmarshal([]byte(strMsg), env)
 	if err != nil {
 		log.Println(err)
+		log.Println(strMsg)
 		setStatus("invalid json message received")
 		return
 	}

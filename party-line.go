@@ -12,6 +12,7 @@ import (
 	"github.com/kevinburke/nacl/sign"
 	"log"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -19,8 +20,6 @@ import (
 
 /*
 TODO:
-	download pack
-	request file (coverage)
 	partial packs
 
 	check fields for shit that gets marshalled
@@ -32,6 +31,7 @@ TODO:
 	sent scrollback
 	mute user
 	bs shortener
+	check channel capcity before adding
 
 	measure block packet size
 	increase block size
@@ -210,12 +210,14 @@ func recv(address string, port uint16) {
 	defer conn.Close()
 	log.Println("listening...")
 
-	reader := bufio.NewReader(conn)
+	reader := bufio.NewReaderSize(conn, 2*65536)
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			setStatus("error reading")
 		}
+
+		log.Println("got", line)
 
 		processMessage(line)
 	}
@@ -229,7 +231,6 @@ var nonatFlag *bool
 var shareFlag *string
 
 func main() {
-
 	debugFlag = flag.Bool("debug", false, "Debug.")
 	portFlag = flag.Uint("port", 3499, "Port.")
 	ipFlag = flag.String("ip", "", "Manually set external IP.")
@@ -260,6 +261,17 @@ func main() {
 	self.Address = extIP.String() + ":" + portStr
 	getKeys()
 
+	// log to file
+	logname := fmt.Sprintf("/tmp/partylog.%s", peerSelf.Id()[:6])
+	f, err := os.OpenFile(logname, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	log.SetOutput(f)
+
 	calculateIdealTableSelf(self.SignPub)
 	initTable(self.SignPub)
 
@@ -276,6 +288,9 @@ func main() {
 	// start network receiver
 	go recv("", port)
 	go sendPings()
+	go fileRequester()
+	go requestSender()
+	go verifiedBlockWriter()
 
 	userInterface()
 }

@@ -31,15 +31,15 @@ func init() {
 	parties = make(map[string]*PartyLine)
 	pending = make(map[string]*PartyLine)
 	freshRequests = make(map[string]*Since)
-	requestChan = make(chan *PartyRequest)
+	requestChan = make(chan *PartyRequest, 100)
+	verifiedBlockChan = make(chan *VerifiedBlock, 100)
 	go advertise()
 }
 
 type VerifiedBlock struct {
-	Path     string
-	Index    uint64
-	Data     []byte
-	Coverage []uint64
+	Block        *Block
+	PackFileInfo *PackFileInfo
+	Hash         string
 }
 
 type PartyLine struct {
@@ -359,6 +359,7 @@ func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
 
 		for _, file := range pack.Files {
 			file.BlockMap = make(map[string]BlockInfo)
+			file.BlockLookup = make(map[uint64]string)
 			file.Coverage = make([]uint64, 0)
 			file.Path = ""
 		}
@@ -535,6 +536,10 @@ func processParty(env *Envelope) {
 		party.ProcessChat(partyEnv)
 	case "disconnect":
 		party.ProcessDisconnect(partyEnv)
+	case "request":
+		party.ProcessRequest(partyEnv)
+	case "fulfillment":
+		party.ProcessFulfillment(partyEnv)
 	default:
 		setStatus(fmt.Sprintf("unknown message type %s (party)", partyEnv.Type))
 	}
@@ -672,9 +677,6 @@ func (party *PartyLine) StartPack(packHash string) {
 	}
 
 	pack.State = ACTIVE
-	// start writer go routine (somewhere else?)
-
-	// start request loop
 }
 
 func (party *PartyLine) ProcessRequest(partyEnv *PartyEnvelope) {
@@ -755,6 +757,8 @@ func (party *PartyLine) SendRequest(packHash string, file *PackFileInfo) {
 		Time:     time.Now().UTC(),
 		PartyId:  party.Id}
 
+	log.Printf("(dbg) sent coverage %v\n", partyRequest.Coverage)
+
 	jsonPartyRequest, err := json.Marshal(partyRequest)
 	if err != nil {
 		log.Println(err)
@@ -767,8 +771,16 @@ func (party *PartyLine) SendRequest(packHash string, file *PackFileInfo) {
 }
 
 func (party *PartyLine) SendRequests(packHash string, pack *Pack) {
+	complete := true
 	for _, file := range pack.Files {
-		party.SendRequest(packHash, file)
+		if !isFullCoverage(file.Size, file.Coverage) {
+			party.SendRequest(packHash, file)
+			complete = false
+		}
+	}
+
+	if complete {
+		pack.State = COMPLETE
 	}
 }
 
@@ -821,10 +833,13 @@ func (party *PartyLine) SendFulfillment(request *PartyRequest, block *Block) {
 		log.Printf("Size of fulfillment: %d", len(jsonEnv)+1)
 	}
 
+	log.Println(string(jsonEnv))
+
 	route(&env)
 }
 
-func (party *PartyLine) ProcessFulfillment(partyEnv *Envelope) {
+func (party *PartyLine) ProcessFulfillment(partyEnv *PartyEnvelope) {
+	log.Println("(dbg) got fulfillment")
 	signedPartyFulfillment := partyEnv.Data
 	jsonPartyFulfillment := signedPartyFulfillment[sign.SignatureSize:]
 
@@ -928,10 +943,12 @@ func (party *PartyLine) ProcessFulfillment(partyEnv *Envelope) {
 
 	// create verified block
 	verifiedBlock := new(VerifiedBlock)
-	verifiedBlock.Data = block.Data
-	verifiedBlock.Index = block.Index
-	verifiedBlock.Path = packFileInfo.Path
-	verifiedBlock.Coverage = packFileInfo.Coverage
+	verifiedBlock.Block = &block
+	verifiedBlock.PackFileInfo = packFileInfo
+	if packFileInfo.BlockLookup == nil {
+		log.Println("(dbg) block lookup nil")
+	}
+	verifiedBlock.Hash = blockHash
 
 	verifiedBlockChan <- verifiedBlock
 }
@@ -948,17 +965,23 @@ func (party *PartyLine) chooseBlock(request *PartyRequest) *Block {
 				next := baseIdx + minorIdx + 1
 				nextMajorIdx := next / 64
 				nextMinorIdx := next % 64
-				nextBlocks[nextMajorIdx] |= (1 << nextMinorIdx)
+				if (request.Coverage[nextMajorIdx]>>nextMinorIdx)&1 == 0 {
+					nextBlocks[nextMajorIdx] |= (1 << nextMinorIdx)
+				}
 
 				left := leftChild(baseIdx + minorIdx)
 				leftMajorIdx := left / 64
 				leftMinorIdx := left % 64
-				nextBlocks[leftMajorIdx] |= (1 << leftMinorIdx)
+				if (request.Coverage[leftMajorIdx]>>leftMinorIdx)&1 == 0 {
+					nextBlocks[leftMajorIdx] |= (1 << leftMinorIdx)
+				}
 
 				right := rightChild(baseIdx + minorIdx)
 				rightMajorIdx := right / 64
 				rightMinorIdx := right % 64
-				nextBlocks[rightMajorIdx] |= (1 << rightMinorIdx)
+				if (request.Coverage[rightMajorIdx]>>rightMinorIdx)&1 == 0 {
+					nextBlocks[rightMajorIdx] |= (1 << rightMinorIdx)
+				}
 			}
 		}
 	}
@@ -970,7 +993,7 @@ func (party *PartyLine) chooseBlock(request *PartyRequest) *Block {
 
 	// xor with self coverage to find candidates to send
 	for majorIdx, _ := range nextBlocks {
-		nextBlocks[majorIdx] ^= selfCoverage[majorIdx]
+		nextBlocks[majorIdx] &= selfCoverage[majorIdx]
 		var minorIdx uint64
 		for minorIdx = 0; minorIdx < 64; minorIdx++ {
 			if (nextBlocks[majorIdx]>>minorIdx)&1 == 1 {
@@ -979,11 +1002,19 @@ func (party *PartyLine) chooseBlock(request *PartyRequest) *Block {
 		}
 	}
 
+	if isEmptyCoverage(selfCoverage) {
+		return nil
+	}
+
+	var blockIdx uint64 = 0
 	// choose random candidate
-	mrandIdx := mrand.Intn(len(blockIndices))
+	if len(blockIndices) > 0 {
+		mrandIdx := mrand.Intn(len(blockIndices))
+		blockIdx = blockIndices[mrandIdx]
+	}
 
 	// get block
-	blockHash, ok := packFileInfo.BlockLookup[uint64(mrandIdx)]
+	blockHash, ok := packFileInfo.BlockLookup[blockIdx]
 	if !ok {
 		log.Println("error block hash not found")
 		return nil
@@ -1002,8 +1033,8 @@ func (party *PartyLine) chooseBlock(request *PartyRequest) *Block {
 		return nil
 	}
 
-	off, err := file.Seek(int64(mrandIdx)*BUFFER_SIZE, os.SEEK_SET)
-	if err != nil || off != int64(mrandIdx)*BUFFER_SIZE {
+	off, err := file.Seek(int64(blockIdx)*BUFFER_SIZE, os.SEEK_SET)
+	if err != nil || off != int64(blockIdx)*BUFFER_SIZE {
 		if err != nil {
 			log.Println(err)
 		}
@@ -1032,6 +1063,7 @@ func fileRequester() {
 			for packHash, pack := range party.Packs {
 				if pack.State == ACTIVE {
 					party.SendRequests(packHash, pack)
+					log.Println("(dbg) sent requests")
 				}
 			}
 		}
@@ -1042,12 +1074,21 @@ func fileRequester() {
 func requestSender() {
 	for {
 		request := <-requestChan
+		if request.PeerId == peerSelf.Id() {
+			// it me
+			log.Println("(dbg) request self")
+			continue
+		}
+
 		if time.Now().UTC().After(request.Time) {
 			// skip if expiry
+			log.Println("(dbg) request expired")
 			continue
 		}
 
 		party := parties[request.PartyId]
+
+		log.Printf("(dbg) got coverage %v\n", request.Coverage)
 
 		// choose block
 		block := party.chooseBlock(request)
@@ -1057,6 +1098,7 @@ func requestSender() {
 
 		// send block
 		party.SendFulfillment(request, block)
+		log.Println("(dbg) sent fulfillment")
 
 		// mark coverage
 		majorIdx := block.Index / 64
@@ -1065,17 +1107,30 @@ func requestSender() {
 
 		// requeue
 		requestChan <- request
+		time.Sleep(1 * time.Second)
 	}
 }
 
 func haveBlock(verifiedBlock *VerifiedBlock) bool {
+	// TODO
 	return false
 }
 
 func setBlockWritten(verifiedBlock *VerifiedBlock) {
-	majorIdx := verifiedBlock.Index / 64
-	minorIdx := verifiedBlock.Index % 64
-	verifiedBlock.Coverage[majorIdx] |= (1 << minorIdx)
+	block := verifiedBlock.Block
+	packFileInfo := verifiedBlock.PackFileInfo
+	majorIdx := block.Index / 64
+	minorIdx := block.Index % 64
+	packFileInfo.Coverage[majorIdx] |= (1 << minorIdx)
+
+	log.Printf("(dbg) set coverage %v\n", packFileInfo.Coverage)
+
+	blockInfo := block.ToBlockInfo()
+	packFileInfo.BlockMap[verifiedBlock.Hash] = *blockInfo
+	if packFileInfo.BlockLookup == nil {
+		log.Println("(dbg) block lookup nil")
+	}
+	packFileInfo.BlockLookup[block.Index] = verifiedBlock.Hash
 }
 
 func verifiedBlockWriter() {
@@ -1083,52 +1138,63 @@ func verifiedBlockWriter() {
 		verifiedBlock := <-verifiedBlockChan
 
 		if haveBlock(verifiedBlock) {
+			log.Println("(dbg) have block skipping")
 			continue
 		}
 
 		mode := os.O_RDWR | os.O_CREATE
-		f, err := os.OpenFile(verifiedBlock.Path, mode, 0755)
+		f, err := os.OpenFile(verifiedBlock.PackFileInfo.Path, mode, 0755)
 		if err != nil {
 			log.Println(err)
-			setStatus("error wrting block")
+			setStatus("error opening file for block")
 			continue
 		}
 
 		// seek block
-		offset := BUFFER_SIZE * verifiedBlock.Index
+		offset := BUFFER_SIZE * verifiedBlock.Block.Index
 		pos, err := f.Seek(int64(offset), os.SEEK_SET)
 		if err != nil || pos != int64(offset) {
 			if err != nil {
 				log.Println(err)
 			}
-			setStatus("error seeking in file")
+			setStatus("error seeking in file for block")
 			continue
 		}
 
 		// write block
-		count, err := f.Write(verifiedBlock.Data)
-		if err != nil || count != len(verifiedBlock.Data) {
+		count, err := f.Write(verifiedBlock.Block.Data)
+		if err != nil || count != len(verifiedBlock.Block.Data) {
 			if err != nil {
 				log.Println(err)
 			}
-			setStatus("error writing to file")
+			setStatus("error writing to file for block")
 			continue
 		}
 
 		err = f.Close()
 		if err != nil {
 			log.Println(err)
-			setStatus("error closing file")
+			setStatus("error closing file for block")
 			continue
 		}
 
 		setBlockWritten(verifiedBlock)
+		log.Printf("(dbg) wrote block %u\n", verifiedBlock.Block.Index)
 	}
 }
 
 func writeZeroFile(name string, size int64) {
 	setStatus("writing empty file for " + name)
-	f, err := os.Create(name)
+
+	fileDir := filepath.Dir(name)
+	err := os.MkdirAll(fileDir, 0700)
+	if err != nil {
+		log.Println(err)
+		setStatus("error when prepping dirs")
+		return
+	}
+
+	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_RDWR, 0666)
 	if err != nil {
 		log.Println(err)
 		setStatus("error when prepping file")

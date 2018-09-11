@@ -416,6 +416,8 @@ func calculateChain(
 		curr.Data = buffer[:bytesRead]
 		curr.DataHash = sha256Buffer
 		curr.NextBlockHash = blocks[currBlockHash].NextBlockHash
+		curr.LeftBlockHash = blocks[currBlockHash].LeftBlockHash
+		curr.RightBlockHash = blocks[currBlockHash].RightBlockHash
 
 		verifyBlockHash := sha256Block(curr)
 		if verifyBlockHash != currBlockHash {
@@ -430,6 +432,16 @@ func calculateChain(
 	return sha256Block(prev), blockMap, nil
 }
 
+func isEmptyCoverage(coverage []uint64) bool {
+	for i := range coverage {
+		if coverage[i] != 0 {
+			return false
+		}
+	}
+
+	return true
+}
+
 func emptyCoverage(size int64) []uint64 {
 	count := uint64(size) / (BUFFER_SIZE * 64)
 	if uint64(size)%(BUFFER_SIZE*64) != 0 {
@@ -437,6 +449,26 @@ func emptyCoverage(size int64) []uint64 {
 	}
 	coverage := make([]uint64, count)
 	return coverage
+}
+
+func isFullCoverage(size int64, coverage []uint64) bool {
+	compare := fullCoverage(size)
+
+	if coverage == nil || compare == nil {
+		panic("coverage for full coverage nil")
+	}
+
+	if len(coverage) != len(compare) {
+		panic("coverage lne != full coverage len")
+	}
+
+	for i := range coverage {
+		if coverage[i] != compare[i] {
+			return false
+		}
+	}
+
+	return true
 }
 
 func fullCoverage(size int64) []uint64 {

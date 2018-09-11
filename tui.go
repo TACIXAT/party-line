@@ -143,6 +143,7 @@ func handleBootstrap(toks []string) {
 }
 
 func chatStatus(status string) {
+	log.Println(status)
 	chat := Chat{
 		Time:    time.Now(),
 		Id:      "SYSTEM",
@@ -188,6 +189,7 @@ func handleChat(buf string) {
 func statusSetter(statusBox *termui.Par) {
 	for {
 		status := <-statusChan
+		log.Println(status)
 		statusBox.Text = status
 		termui.Clear()
 		termui.Render(termui.Body)
