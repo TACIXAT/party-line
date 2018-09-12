@@ -20,18 +20,20 @@ import (
 
 /*
 TODO:
-	partial packs
+	drop pack name in receiving file structure
+	unthrottle fulfillments
 
-	check fields for shit that gets marshalled
-	more statuses
-	name color
 	scrolling
-	better keys
 	cursor on input
+	better keys
 	sent scrollback
-	mute user
 	bs shortener
+	name color
+	mute user
+	more statuses
+
 	check channel capcity before adding
+	partial packs (save / resume on exit)
 
 	measure block packet size
 	increase block size
