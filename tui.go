@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/gizak/termui"
+	"github.com/mattn/go-runewidth"
 	"log"
 	"strconv"
 	"strings"
@@ -68,7 +69,7 @@ func formatChatsFit() string {
 			msg += "\n"
 		}
 
-		length := len(msg) / width
+		length := runewidth.StringWidth(msg) / width
 
 		for length > 0 {
 			line := msg[:width]
