@@ -1179,7 +1179,7 @@ func verifiedBlockWriter() {
 		}
 
 		setBlockWritten(verifiedBlock)
-		log.Printf("(dbg) wrote block %u\n", verifiedBlock.Block.Index)
+		log.Printf("(dbg) wrote block %d\n", verifiedBlock.Block.Index)
 	}
 }
 
