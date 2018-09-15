@@ -569,6 +569,12 @@ func handleHelp() {
 	chatStatus("    clear chat log")
 	chatStatus("/ids <size>")
 	chatStatus("    change id display size (hex)")
+	chatStatus("/packs")
+	chatStatus("    list available packs")
+	chatStatus("/get <party_id> <pack_id>")
+	chatStatus("    get a pack from a party (partial ids ok)")
+	chatStatus("/rescan")
+	chatStatus("    recan share dir for new packs")
 	chatStatus("/help")
 	chatStatus("    display this")
 	chatStatus("/quit")
@@ -583,10 +589,6 @@ func handleUserInput(buf string) {
 
 	toks := strings.Split(buf, " ")
 	switch toks[0] {
-	case "/quit":
-		disconnectParties()
-		sendDisconnect()
-		termui.StopLoop()
 	case "/bs":
 		handleBootstrap(toks)
 	case "/start":
@@ -595,6 +597,8 @@ func handleUserInput(buf string) {
 		handleInvite(toks)
 	case "/accept":
 		handleAccept(toks)
+	case "/list":
+		handleList(toks)
 	case "/send":
 		handleSend(toks)
 	case "/leave":
@@ -605,16 +609,18 @@ func handleUserInput(buf string) {
 		handleClear(toks)
 	case "/ids":
 		handleIds(toks)
-	case "/rescan":
-		resetPacks()
 	case "/packs":
 		handlePacks(toks)
 	case "/get":
 		handleGet(toks)
+	case "/rescan":
+		resetPacks()
 	case "/help":
 		handleHelp()
-	case "/list":
-		handleList(toks)
+	case "/quit":
+		disconnectParties()
+		sendDisconnect()
+		termui.StopLoop()
 	default:
 		handleChat(buf)
 	}
