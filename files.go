@@ -204,7 +204,6 @@ func initFiles() {
 		log.Fatal("could not create shared dir")
 	}
 
-	fmt.Println("sharing", sharedDir)
 	fileMod = make(map[string]time.Time)
 }
 
@@ -222,9 +221,6 @@ func (packFileInfo ByFileName) Less(i, j int) bool {
 	return packFileInfo[i].Name < packFileInfo[j].Name
 }
 
-// TODO: first pack received sets file names for ad
-// an aggressive client could troll with file names
-// I should fix this
 func sha256Pack(pack *Pack) string {
 	if pack == nil {
 		return ""
@@ -479,7 +475,6 @@ func fullCoverage(size int64) []uint64 {
 	for i = 0; i*BUFFER_SIZE < uint64(size); i++ {
 		curr |= 1 << (i % 64)
 		if (i+1)%64 == 0 {
-			fmt.Println("adding", i)
 			coverage = append(coverage, curr)
 			curr = 0
 		}

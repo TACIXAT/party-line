@@ -20,7 +20,7 @@ import (
 
 /*
 TODO:
-	drop pack name in receiving file structure
+	test dropped pack name in receiving file structure
 	unthrottle fulfillments
 
 	scrolling

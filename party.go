@@ -637,15 +637,7 @@ func (party *PartyLine) StartPack(packHash string) {
 		return
 	}
 
-	destinationDirAbs := filepath.Join(partyDirAbs, pack.Name)
-
-	// double check in case there are tricks we don't know about
-	if !strings.HasPrefix(destinationDirAbs, partyDir) {
-		setStatus("error destination dir outside of party dir")
-		return
-	}
-
-	err = os.MkdirAll(destinationDirAbs, 0700)
+	err = os.MkdirAll(partyDirAbs, 0700)
 	if err != nil {
 		log.Println(err)
 		setStatus("error could not create destination dir")
@@ -660,7 +652,7 @@ func (party *PartyLine) StartPack(packHash string) {
 		return
 	}
 
-	pendingFileName := filepath.Join(destinationDirAbs, pack.Name+".pending")
+	pendingFileName := filepath.Join(partyDirAbs, pack.Name+".pending")
 	err = ioutil.WriteFile(pendingFileName, []byte(jsonPendingPack), 0644)
 	if err != nil {
 		log.Println(err)
@@ -668,7 +660,7 @@ func (party *PartyLine) StartPack(packHash string) {
 		return
 	}
 
-	pack.SetPaths(destinationDirAbs)
+	pack.SetPaths(partyDirAbs)
 
 	// write zeros to files
 	for _, file := range pack.Files {
@@ -879,8 +871,6 @@ func (party *PartyLine) ProcessFulfillment(partyEnv *PartyEnvelope) {
 		// we don't have the file
 		return
 	}
-
-	// TODO: check have block
 
 	block := partyFulfillment.Block
 
@@ -1107,13 +1097,16 @@ func requestSender() {
 
 		// requeue
 		requestChan <- request
-		time.Sleep(1 * time.Second)
+		// time.Sleep(1 * time.Second)
 	}
 }
 
 func haveBlock(verifiedBlock *VerifiedBlock) bool {
-	// TODO
-	return false
+	block := verifiedBlock.Block
+	majorIdx := block.Index / 64
+	minorIdx := block.Index % 64
+	packFileInfo := verifiedBlock.PackFileInfo
+	return ((packFileInfo.Coverage[majorIdx] >> minorIdx) & 1) == 1
 }
 
 func setBlockWritten(verifiedBlock *VerifiedBlock) {
