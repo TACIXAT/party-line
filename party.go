@@ -173,6 +173,7 @@ func (party *PartyLine) SendInvite(min *MinPeer) {
 	env.Data = closed
 
 	route(&env)
+	setStatus("invite sent")
 }
 
 func (party *PartyLine) SendAnnounce() {

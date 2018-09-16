@@ -77,7 +77,8 @@ func flood(env *Envelope) {
 			_, sent := sentPeers[currPeer.Id()]
 			if !sent {
 				if currPeer.Conn != nil {
-					currPeer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
+					currPeer.Conn.Write(
+						[]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
 				} else {
 					chatStatus(fmt.Sprintf("currPeer conn nil %s", currPeer.Id()))
 				}
@@ -364,7 +365,8 @@ func sendPings() {
 				if entry.Peer != nil {
 					_, seen := peerSeen[entry.Peer.Id()]
 					if !seen {
-						entry.Peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
+						entry.Peer.Conn.Write(
+							[]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
 						peerSeen[entry.Peer.Id()] = true
 					}
 				}
