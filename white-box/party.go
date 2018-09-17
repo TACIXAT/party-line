@@ -1,4 +1,4 @@
-package main
+package whitebox
 
 import (
 	"bytes"
@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/douggard/party-line/party-lib"
 	"github.com/kevinburke/nacl/box"
 	"github.com/kevinburke/nacl/sign"
 	"io"
@@ -47,6 +48,7 @@ type PartyLine struct {
 	Id        string
 	SeenChats map[string]bool  `json:"-"`
 	Packs     map[string]*Pack `json:"-"`
+	WhiteBox  *WhiteBox        `json:"-"`
 }
 
 type PartyEnvelope struct {
@@ -410,13 +412,13 @@ func (party *PartyLine) ProcessChat(partyEnv *PartyEnvelope) {
 	if !seen {
 		party.SeenChats[chatId] = true
 
-		chat := Chat{
+		chat := partylib.Chat{
 			Time:    time.Now().UTC(),
 			Id:      partyChat.PeerId,
 			Channel: party.Id,
 			Message: partyChat.Message}
 
-		addChat(chat)
+		party.WhiteBox.addChat(chat)
 
 		party.sendToNeighbors("chat", signedPartyChat)
 	}
@@ -552,7 +554,7 @@ func processParty(env *Envelope) {
 	}
 }
 
-func processInvite(env *Envelope) {
+func (wb *WhiteBox) processInvite(env *Envelope) {
 	min, err := idToMin(env.From)
 	if err != nil {
 		setStatus(err.Error())
@@ -579,6 +581,7 @@ func processInvite(env *Envelope) {
 		return
 	}
 
+	party.WhiteBox = wb
 	party.SeenChats = make(map[string]bool)
 	party.Packs = make(map[string]*Pack)
 

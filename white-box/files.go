@@ -1,4 +1,4 @@
-package main
+package whitebox
 
 import (
 	"crypto/sha256"
@@ -188,15 +188,15 @@ var fileMod map[string]time.Time
 
 const BUFFER_SIZE = 10240
 
-func initFiles() {
-	if shareFlag != nil && *shareFlag != "" {
-		sharedDir = *shareFlag
-	} else {
+func (wb *WhiteBox) InitFiles(dir string) {
+	if dir == "" {
 		home, err := homedir.Dir()
 		if err != nil {
 			log.Fatal("could not get home dir")
 		}
 		sharedDir = filepath.Join(home, "party-line")
+	} else {
+		sharedDir = dir
 	}
 
 	err := os.MkdirAll(sharedDir, 0700)

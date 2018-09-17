@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/douggard/party-line/party-lib"
 	"github.com/gizak/termui"
 	"github.com/mattn/go-runewidth"
 	"log"
@@ -11,14 +12,7 @@ import (
 	"time"
 )
 
-type Chat struct {
-	Time    time.Time
-	Id      string
-	Channel string
-	Message string
-}
-
-var chatLog []Chat
+var chatLog []partylib.Chat
 var messageBox *termui.Par
 var IDS int // id display size
 var chatMutex *sync.Mutex
@@ -145,7 +139,7 @@ func handleBootstrap(toks []string) {
 
 func chatStatus(status string) {
 	log.Println(status)
-	chat := Chat{
+	chat := partylib.Chat{
 		Time:    time.Now(),
 		Id:      "SYSTEM",
 		Channel: "",
@@ -158,7 +152,7 @@ func setStatus(status string) {
 	statusChan <- status
 }
 
-func addChat(chat Chat) {
+func addChat(chat partylib.Chat) {
 	chatMutex.Lock()
 	chatLog = append(chatLog, chat)
 	chats := formatChats()

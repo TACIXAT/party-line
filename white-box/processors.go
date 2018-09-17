@@ -1,9 +1,10 @@
-package main
+package whitebox
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/douggard/party-line/party-lib"
 	"github.com/kevinburke/nacl/sign"
 	"log"
 	"net"
@@ -16,7 +17,7 @@ func init() {
 	noReroute = make(map[time.Time]bool)
 }
 
-func processMessage(strMsg string) {
+func (wb *WhiteBox) processMessage(strMsg string) {
 	env := new(Envelope)
 	err := json.Unmarshal([]byte(strMsg), env)
 	if err != nil {
@@ -44,7 +45,7 @@ func processMessage(strMsg string) {
 	case "bootstrap":
 		processBootstrap(env)
 	case "chat":
-		processChat(env)
+		wb.processChat(env)
 	case "disconnect":
 		processDisconnect(env)
 	case "request":
@@ -60,7 +61,7 @@ func processMessage(strMsg string) {
 	case "party":
 		processParty(env)
 	case "invite":
-		processInvite(env)
+		wb.processInvite(env)
 	default:
 		chatStatus("unknown msg type: " + env.Type)
 	}
@@ -86,7 +87,7 @@ func verifyEnvelope(env *Envelope, caller string) ([]byte, error) {
 	return jsonData, nil
 }
 
-func processChat(env *Envelope) {
+func (wb *WhiteBox) processChat(env *Envelope) {
 	jsonData, err := verifyEnvelope(env, "chat")
 	if err != nil {
 		setStatus(err.Error())
@@ -109,13 +110,13 @@ func processChat(env *Envelope) {
 	uniqueId := env.From + "." + msgChat.Time.String()
 	_, seen := seenChats[uniqueId]
 	if !seen {
-		chat := Chat{
+		chat := partylib.Chat{
 			Time:    time.Now(),
 			Id:      env.From,
 			Channel: "mainline",
 			Message: msgChat.Message}
 
-		addChat(chat)
+		wb.addChat(chat)
 		flood(env)
 		seenChats[uniqueId] = true
 	}

@@ -1,4 +1,4 @@
-package main
+package whitebox
 
 import (
 	"bytes"
