@@ -118,7 +118,7 @@ func (party *PartyLine) getNeighbors() map[string]bool {
 	sort.Strings(sortedIds)
 
 	var idx int = -1
-	selfId := peerSelf.Id()
+	selfId := party.WhiteBox.PeerSelf.Id()
 	for i, id := range sortedIds {
 		if id == selfId {
 			idx = i
@@ -128,7 +128,7 @@ func (party *PartyLine) getNeighbors() map[string]bool {
 
 	neighbors := make(map[string]bool)
 	if idx == -1 {
-		setStatus("error could not find self in min list")
+		party.WhiteBox.setStatus("error could not find self in min list")
 		return neighbors
 	}
 
@@ -146,7 +146,7 @@ func (party *PartyLine) getNeighbors() map[string]bool {
 func (party *PartyLine) SendInvite(min *MinPeer) {
 	env := Envelope{
 		Type: "invite",
-		From: peerSelf.Id(),
+		From: party.WhiteBox.PeerSelf.Id(),
 		To:   min.Id()}
 
 	// keep message small so we don't limit party size
@@ -171,26 +171,27 @@ func (party *PartyLine) SendInvite(min *MinPeer) {
 		return
 	}
 
-	closed := box.EasySeal([]byte(jsonInvite), min.EncPub, self.EncPrv)
+	closed := box.EasySeal(
+		[]byte(jsonInvite), min.EncPub, party.WhiteBox.Self.EncPrv)
 	env.Data = closed
 
-	route(&env)
-	setStatus("invite sent")
+	party.WhiteBox.route(&env)
+	party.WhiteBox.setStatus("invite sent")
 }
 
 func (party *PartyLine) SendAnnounce() {
 	env := Envelope{
 		Type: "party",
-		From: peerSelf.Id(),
+		From: party.WhiteBox.PeerSelf.Id(),
 		To:   ""}
 
 	partyEnv := PartyEnvelope{
 		Type:    "announce",
-		From:    peerSelf.Id(),
+		From:    party.WhiteBox.PeerSelf.Id(),
 		PartyId: party.Id}
 
 	partyAnnounce := PartyAnnounce{
-		PeerId:  peerSelf.Id(),
+		PeerId:  party.WhiteBox.PeerSelf.Id(),
 		PartyId: party.Id}
 
 	jsonPartyAnnounce, err := json.Marshal(partyAnnounce)
@@ -199,7 +200,8 @@ func (party *PartyLine) SendAnnounce() {
 		return
 	}
 
-	signedPartyAnnounce := sign.Sign([]byte(jsonPartyAnnounce), self.SignPrv)
+	signedPartyAnnounce := sign.Sign(
+		[]byte(jsonPartyAnnounce), party.WhiteBox.Self.SignPrv)
 	partyEnv.Data = signedPartyAnnounce
 
 	jsonPartyEnv, err := json.Marshal(partyEnv)
@@ -211,27 +213,29 @@ func (party *PartyLine) SendAnnounce() {
 	for idMin, _ := range party.MinList {
 		min, err := idToMin(idMin)
 		if err != nil {
-			setStatus(err.Error())
+			party.WhiteBox.setStatus(err.Error())
 			continue
 		}
 
-		closed := box.EasySeal([]byte(jsonPartyEnv), min.EncPub, self.EncPrv)
+		closed := box.EasySeal(
+			[]byte(jsonPartyEnv), min.EncPub, party.WhiteBox.Self.EncPrv)
 		env.Data = closed
 		env.To = idMin
 
-		route(&env)
+		party.WhiteBox.route(&env)
 	}
 }
 
-func (party *PartyLine) sendToNeighbors(msgType string, signedPartyData []byte) {
+func (party *PartyLine) sendToNeighbors(
+	msgType string, signedPartyData []byte) {
 	env := Envelope{
 		Type: "party",
-		From: peerSelf.Id(),
+		From: party.WhiteBox.PeerSelf.Id(),
 		To:   ""}
 
 	partyEnv := PartyEnvelope{
 		Type:    msgType,
-		From:    peerSelf.Id(),
+		From:    party.WhiteBox.PeerSelf.Id(),
 		PartyId: party.Id}
 
 	partyEnv.Data = signedPartyData
@@ -246,21 +250,22 @@ func (party *PartyLine) sendToNeighbors(msgType string, signedPartyData []byte) 
 	for idMin, _ := range neighbors {
 		min, err := idToMin(idMin)
 		if err != nil {
-			setStatus(err.Error())
+			party.WhiteBox.setStatus(err.Error())
 			continue
 		}
 
-		closed := box.EasySeal([]byte(jsonPartyEnv), min.EncPub, self.EncPrv)
+		closed := box.EasySeal(
+			[]byte(jsonPartyEnv), min.EncPub, party.WhiteBox.Self.EncPrv)
 		env.Data = closed
 		env.To = idMin
 
-		route(&env)
+		party.WhiteBox.route(&env)
 	}
 }
 
 func (party *PartyLine) SendChat(message string) {
 	partyChat := PartyChat{
-		PeerId:  peerSelf.Id(),
+		PeerId:  party.WhiteBox.PeerSelf.Id(),
 		PartyId: party.Id,
 		Message: message,
 		Time:    time.Now().UTC()}
@@ -271,14 +276,15 @@ func (party *PartyLine) SendChat(message string) {
 		return
 	}
 
-	signedPartyChat := sign.Sign([]byte(jsonPartyChat), self.SignPrv)
+	signedPartyChat := sign.Sign(
+		[]byte(jsonPartyChat), party.WhiteBox.Self.SignPrv)
 
 	party.sendToNeighbors("chat", signedPartyChat)
 }
 
 func (party *PartyLine) SendDisconnect() {
 	partyDisconnect := PartyDisconnect{
-		PeerId:  peerSelf.Id(),
+		PeerId:  party.WhiteBox.PeerSelf.Id(),
 		PartyId: party.Id,
 		Time:    time.Now().UTC()}
 
@@ -291,13 +297,13 @@ func (party *PartyLine) SendDisconnect() {
 	delete(parties, party.Id)
 
 	signedPartyDisconnect := sign.Sign(
-		[]byte(jsonPartyDisconnect), self.SignPrv)
+		[]byte(jsonPartyDisconnect), party.WhiteBox.Self.SignPrv)
 	party.sendToNeighbors("disconnect", signedPartyDisconnect)
 }
 
 func (party *PartyLine) SendAdvertisement(packSha256 string, pack *Pack) {
 	partyAdvertisement := PartyAdvertisement{
-		PeerId:  peerSelf.Id(),
+		PeerId:  party.WhiteBox.PeerSelf.Id(),
 		PartyId: party.Id,
 		Time:    time.Now().UTC(),
 		Hash:    packSha256,
@@ -310,7 +316,7 @@ func (party *PartyLine) SendAdvertisement(packSha256 string, pack *Pack) {
 	}
 
 	signedPartyAdvertisement := sign.Sign(
-		[]byte(jsonPartyAdvertisement), self.SignPrv)
+		[]byte(jsonPartyAdvertisement), party.WhiteBox.Self.SignPrv)
 
 	party.sendToNeighbors("ad", signedPartyAdvertisement)
 }
@@ -323,24 +329,25 @@ func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
 	err := json.Unmarshal(jsonPartyAdvertisement, partyAdvertisement)
 	if err != nil {
 		log.Println(err)
-		setStatus("error invalid json (party:ad)")
+		party.WhiteBox.setStatus("error invalid json (party:ad)")
 		return
 	}
 
 	if party.Id != partyAdvertisement.PartyId {
-		setStatus("error invalid party id for (party:ad)")
+		party.WhiteBox.setStatus("error invalid party id for (party:ad)")
 		return
 	}
 
 	min, err := idToMin(partyAdvertisement.PeerId)
 	if err != nil {
-		setStatus("error bad id (party:ad)")
+		party.WhiteBox.setStatus("error bad id (party:ad)")
 		return
 	}
 
 	verified := sign.Verify(signedPartyAdvertisement, min.SignPub)
 	if !verified {
-		setStatus("error questionable message integrity (party:ad)")
+		party.WhiteBox.setStatus(
+			"error questionable message integrity (party:ad)")
 		return
 	}
 
@@ -349,7 +356,7 @@ func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
 
 	hash := partyAdvertisement.Hash
 	if hash != sha256Pack(newPack) {
-		setStatus("error bad pack hash (party:ad)")
+		party.WhiteBox.setStatus("error bad pack hash (party:ad)")
 		return
 	}
 
@@ -386,24 +393,25 @@ func (party *PartyLine) ProcessChat(partyEnv *PartyEnvelope) {
 	err := json.Unmarshal(jsonPartyChat, partyChat)
 	if err != nil {
 		log.Println(err)
-		setStatus("error invalid json (party:chat)")
+		party.WhiteBox.setStatus("error invalid json (party:chat)")
 		return
 	}
 
 	if partyChat.PartyId != party.Id {
-		setStatus("error invalid party (party:chat)")
+		party.WhiteBox.setStatus("error invalid party (party:chat)")
 		return
 	}
 
 	min, err := idToMin(partyChat.PeerId)
 	if err != nil {
-		setStatus("error bad id (party:chat)")
+		party.WhiteBox.setStatus("error bad id (party:chat)")
 		return
 	}
 
 	verified := sign.Verify(signedPartyChat, min.SignPub)
 	if !verified {
-		setStatus("error questionable message integrity (party:chat)")
+		party.WhiteBox.setStatus(
+			"error questionable message integrity (party:chat)")
 		return
 	}
 
@@ -432,29 +440,31 @@ func (party *PartyLine) ProcessDisconnect(partyEnv *PartyEnvelope) {
 	err := json.Unmarshal(jsonPartyDisconnect, partyDisconnect)
 	if err != nil {
 		log.Println(err)
-		setStatus("error invalid json (party:disconnect)")
+		party.WhiteBox.setStatus("error invalid json (party:disconnect)")
 		return
 	}
 
 	if partyDisconnect.PartyId != party.Id {
-		setStatus("error invalid party (party:disconnect)")
+		party.WhiteBox.setStatus("error invalid party (party:disconnect)")
 		return
 	}
 
 	min, err := idToMin(partyDisconnect.PeerId)
 	if err != nil {
-		setStatus("error bad id (party:disconnect)")
+		party.WhiteBox.setStatus("error bad id (party:disconnect)")
 		return
 	}
 
 	verified := sign.Verify(signedPartyDisconnect, min.SignPub)
 	if !verified {
-		setStatus("error questionable message integrity (party:disconnect)")
+		party.WhiteBox.setStatus(
+			"error questionable message integrity (party:disconnect)")
 		return
 	}
 
 	if time.Since(partyDisconnect.Time) > 200*time.Second {
-		setStatus("error time exceeds max allowable (party:disconnect)")
+		party.WhiteBox.setStatus(
+			"error time exceeds max allowable (party:disconnect)")
 		return
 	}
 
@@ -474,24 +484,25 @@ func (party *PartyLine) ProcessAnnounce(partyEnv *PartyEnvelope) {
 	err := json.Unmarshal(jsonPartyAnnounce, partyAnnounce)
 	if err != nil {
 		log.Println(err)
-		setStatus("error invalid json (party:announce)")
+		party.WhiteBox.setStatus("error invalid json (party:announce)")
 		return
 	}
 
 	if partyAnnounce.PartyId != party.Id {
-		setStatus("error invalid party (party:announce)")
+		party.WhiteBox.setStatus("error invalid party (party:announce)")
 		return
 	}
 
 	min, err := idToMin(partyAnnounce.PeerId)
 	if err != nil {
-		setStatus("error bad id (party:announce)")
+		party.WhiteBox.setStatus("error bad id (party:announce)")
 		return
 	}
 
 	verified := sign.Verify(signedPartyAnnounce, min.SignPub)
 	if !verified {
-		setStatus("error questionable message integrity (party:announce)")
+		party.WhiteBox.setStatus(
+			"error questionable message integrity (party:announce)")
 		return
 	}
 
@@ -503,16 +514,16 @@ func (party *PartyLine) ProcessAnnounce(partyEnv *PartyEnvelope) {
 	}
 }
 
-func processParty(env *Envelope) {
+func (wb *WhiteBox) processParty(env *Envelope) {
 	min, err := idToMin(env.From)
 	if err != nil {
-		setStatus(err.Error())
+		wb.setStatus(err.Error())
 		return
 	}
 
-	jsonData, err := box.EasyOpen(env.Data, min.EncPub, self.EncPrv)
+	jsonData, err := box.EasyOpen(env.Data, min.EncPub, wb.Self.EncPrv)
 	if err != nil {
-		setStatus("error invalid crypto (party)")
+		wb.setStatus("error invalid crypto (party)")
 		return
 	}
 
@@ -520,13 +531,13 @@ func processParty(env *Envelope) {
 	err = json.Unmarshal(jsonData, partyEnv)
 	if err != nil {
 		log.Println(err)
-		setStatus("error invalid json (party)")
+		wb.setStatus("error invalid json (party)")
 		return
 	}
 
 	party, exists := parties[partyEnv.PartyId]
 	if !exists {
-		setStatus("error invalid party (party)")
+		wb.setStatus("error invalid party (party)")
 		return
 	}
 
@@ -544,7 +555,8 @@ func processParty(env *Envelope) {
 	case "fulfillment":
 		party.ProcessFulfillment(partyEnv)
 	default:
-		setStatus(fmt.Sprintf("unknown message type %s (party)", partyEnv.Type))
+		wb.setStatus(
+			fmt.Sprintf("unknown message type %s (party)", partyEnv.Type))
 	}
 
 	// chatStatus(fmt.Sprintf("got %s", partyEnv.Type))
@@ -557,13 +569,14 @@ func processParty(env *Envelope) {
 func (wb *WhiteBox) processInvite(env *Envelope) {
 	min, err := idToMin(env.From)
 	if err != nil {
-		setStatus(err.Error())
+		wb.setStatus(err.Error())
 		return
 	}
 
-	jsonData, err := box.EasyOpen(env.Data, min.EncPub, self.EncPrv)
+	jsonData, err := box.EasyOpen(
+		env.Data, min.EncPub, wb.Self.EncPrv)
 	if err != nil {
-		setStatus("error invalid crypto (invite)")
+		wb.setStatus("error invalid crypto (invite)")
 		return
 	}
 
@@ -571,13 +584,13 @@ func (wb *WhiteBox) processInvite(env *Envelope) {
 	err = json.Unmarshal(jsonData, party)
 	if err != nil {
 		log.Println(err)
-		setStatus("error invalid json (invite)")
+		party.WhiteBox.setStatus("error invalid json (invite)")
 		return
 	}
 
 	match, err := regexp.MatchString("^[a-zA-Z0-9]{32}$", party.Id)
 	if err != nil || !match {
-		setStatus("error invalid party id (invite)")
+		wb.setStatus("error invalid party id (invite)")
 		return
 	}
 
@@ -589,19 +602,19 @@ func (wb *WhiteBox) processInvite(env *Envelope) {
 	_, inParties := parties[party.Id]
 
 	if inPending || inParties {
-		setStatus("reinvite ignored for " + party.Id)
+		wb.setStatus("reinvite ignored for " + party.Id)
 		return
 	}
 
 	pending[party.Id] = party
-	setStatus(fmt.Sprintf("invite received for %s", party.Id))
+	party.WhiteBox.setStatus(fmt.Sprintf("invite received for %s", party.Id))
 }
 
 func acceptInvite(partyId string) {
 	party := pending[partyId]
 
 	if _, joined := parties[partyId]; joined {
-		setStatus("error already joined party with id")
+		party.WhiteBox.setStatus("error already joined party with id")
 		log.Println("party id in both pending and parties")
 		return
 	}
@@ -609,7 +622,7 @@ func acceptInvite(partyId string) {
 	delete(pending, partyId)
 	party.SendAnnounce()
 	parties[party.Id] = party
-	setStatus(fmt.Sprintf("accepted invite %s", party.Id))
+	party.WhiteBox.setStatus(fmt.Sprintf("accepted invite %s", party.Id))
 }
 
 func (party *PartyLine) AdvertisePacks() {
@@ -632,19 +645,20 @@ func (party *PartyLine) StartPack(packHash string) {
 	partyDirAbs, err := filepath.Abs(partyDir)
 	if err != nil {
 		log.Println(err)
-		setStatus("error could not get absolute path for party dir")
+		party.WhiteBox.setStatus(
+			"error could not get absolute path for party dir")
 		return
 	}
 
 	if strings.Contains(pack.Name, "..") {
-		setStatus("error pack name potential directory traversal")
+		party.WhiteBox.setStatus("error pack name potential directory traversal")
 		return
 	}
 
 	err = os.MkdirAll(partyDirAbs, 0700)
 	if err != nil {
 		log.Println(err)
-		setStatus("error could not create destination dir")
+		party.WhiteBox.setStatus("error could not create destination dir")
 		return
 	}
 
@@ -652,7 +666,7 @@ func (party *PartyLine) StartPack(packHash string) {
 	jsonPendingPack, err := json.Marshal(pendingPack)
 	if err != nil {
 		log.Println(err)
-		setStatus("error marshalling pending pack to json")
+		party.WhiteBox.setStatus("error marshalling pending pack to json")
 		return
 	}
 
@@ -660,7 +674,7 @@ func (party *PartyLine) StartPack(packHash string) {
 	err = ioutil.WriteFile(pendingFileName, []byte(jsonPendingPack), 0644)
 	if err != nil {
 		log.Println(err)
-		setStatus("error writing pending pack to file")
+		party.WhiteBox.setStatus("error writing pending pack to file")
 		return
 	}
 
@@ -668,7 +682,7 @@ func (party *PartyLine) StartPack(packHash string) {
 
 	// write zeros to files
 	for _, file := range pack.Files {
-		writeZeroFile(file.Path, file.Size)
+		party.WhiteBox.writeZeroFile(file.Path, file.Size)
 		file.Coverage = emptyCoverage(file.Size)
 	}
 
@@ -683,24 +697,25 @@ func (party *PartyLine) ProcessRequest(partyEnv *PartyEnvelope) {
 	err := json.Unmarshal(jsonPartyRequest, partyRequest)
 	if err != nil {
 		log.Println(err)
-		setStatus("error invalid json (party:request)")
+		party.WhiteBox.setStatus("error invalid json (party:request)")
 		return
 	}
 
 	min, err := idToMin(partyRequest.PeerId)
 	if err != nil {
-		setStatus("error bad id (party:request)")
+		party.WhiteBox.setStatus("error bad id (party:request)")
 		return
 	}
 
 	verified := sign.Verify(signedPartyRequest, min.SignPub)
 	if !verified {
-		setStatus("error questionable message integrity (party:request)")
+		party.WhiteBox.setStatus(
+			"error questionable message integrity (party:request)")
 		return
 	}
 
 	if partyRequest.PartyId != party.Id {
-		setStatus("error invalid party id (party:request)")
+		party.WhiteBox.setStatus("error invalid party id (party:request)")
 		return
 	}
 
@@ -746,7 +761,7 @@ func (party *PartyLine) ProcessRequest(partyEnv *PartyEnvelope) {
 
 func (party *PartyLine) SendRequest(packHash string, file *PackFileInfo) {
 	partyRequest := PartyRequest{
-		PeerId:   peerSelf.Id(),
+		PeerId:   party.WhiteBox.PeerSelf.Id(),
 		PackHash: packHash,
 		FileHash: file.Hash,
 		Coverage: file.Coverage,
@@ -761,7 +776,8 @@ func (party *PartyLine) SendRequest(packHash string, file *PackFileInfo) {
 		return
 	}
 
-	signedPartyRequest := sign.Sign([]byte(jsonPartyRequest), self.SignPrv)
+	signedPartyRequest := sign.Sign(
+		[]byte(jsonPartyRequest), party.WhiteBox.Self.SignPrv)
 
 	party.sendToNeighbors("request", signedPartyRequest)
 }
@@ -783,16 +799,16 @@ func (party *PartyLine) SendRequests(packHash string, pack *Pack) {
 func (party *PartyLine) SendFulfillment(request *PartyRequest, block *Block) {
 	env := Envelope{
 		Type: "party",
-		From: peerSelf.Id(),
+		From: party.WhiteBox.PeerSelf.Id(),
 		To:   request.PeerId}
 
 	partyEnv := PartyEnvelope{
 		Type:    "fulfillment",
-		From:    peerSelf.Id(),
+		From:    party.WhiteBox.PeerSelf.Id(),
 		PartyId: party.Id}
 
 	partyFulfillment := PartyFulfillment{
-		PeerId:   peerSelf.Id(),
+		PeerId:   party.WhiteBox.PeerSelf.Id(),
 		PackHash: request.PackHash,
 		FileHash: request.FileHash,
 		PartyId:  party.Id,
@@ -805,7 +821,7 @@ func (party *PartyLine) SendFulfillment(request *PartyRequest, block *Block) {
 	}
 
 	signedPartyFulfillment :=
-		sign.Sign([]byte(jsonPartyFulfillment), self.SignPrv)
+		sign.Sign([]byte(jsonPartyFulfillment), party.WhiteBox.Self.SignPrv)
 
 	partyEnv.Data = signedPartyFulfillment
 
@@ -817,11 +833,12 @@ func (party *PartyLine) SendFulfillment(request *PartyRequest, block *Block) {
 
 	min, err := idToMin(request.PeerId)
 	if err != nil {
-		setStatus(err.Error())
+		party.WhiteBox.setStatus(err.Error())
 		return
 	}
 
-	closed := box.EasySeal([]byte(jsonPartyEnv), min.EncPub, self.EncPrv)
+	closed := box.EasySeal(
+		[]byte(jsonPartyEnv), min.EncPub, party.WhiteBox.Self.EncPrv)
 	env.Data = closed
 
 	jsonEnv, err := json.Marshal(env)
@@ -831,7 +848,7 @@ func (party *PartyLine) SendFulfillment(request *PartyRequest, block *Block) {
 
 	log.Println(string(jsonEnv))
 
-	route(&env)
+	party.WhiteBox.route(&env)
 }
 
 func (party *PartyLine) ProcessFulfillment(partyEnv *PartyEnvelope) {
@@ -843,19 +860,20 @@ func (party *PartyLine) ProcessFulfillment(partyEnv *PartyEnvelope) {
 	err := json.Unmarshal(jsonPartyFulfillment, partyFulfillment)
 	if err != nil {
 		log.Println(err)
-		setStatus("error invalid json (party:fulfillment)")
+		party.WhiteBox.setStatus("error invalid json (party:fulfillment)")
 		return
 	}
 
 	min, err := idToMin(partyFulfillment.PeerId)
 	if err != nil {
-		setStatus("error bad id (party:fulfillment)")
+		party.WhiteBox.setStatus("error bad id (party:fulfillment)")
 		return
 	}
 
 	verified := sign.Verify(signedPartyFulfillment, min.SignPub)
 	if !verified {
-		setStatus("error questionable message integrity (party:fulfillment)")
+		party.WhiteBox.setStatus(
+			"error questionable message integrity (party:fulfillment)")
 		return
 	}
 
@@ -1065,10 +1083,10 @@ func fileRequester() {
 	}
 }
 
-func requestSender() {
+func (wb *WhiteBox) RequestSender() {
 	for {
 		request := <-requestChan
-		if request.PeerId == peerSelf.Id() {
+		if request.PeerId == wb.PeerSelf.Id() {
 			// it me
 			log.Println("(dbg) request self")
 			continue
@@ -1130,7 +1148,7 @@ func setBlockWritten(verifiedBlock *VerifiedBlock) {
 	packFileInfo.BlockLookup[block.Index] = verifiedBlock.Hash
 }
 
-func verifiedBlockWriter() {
+func (wb *WhiteBox) verifiedBlockWriter() {
 	for {
 		verifiedBlock := <-verifiedBlockChan
 
@@ -1143,7 +1161,7 @@ func verifiedBlockWriter() {
 		f, err := os.OpenFile(verifiedBlock.PackFileInfo.Path, mode, 0755)
 		if err != nil {
 			log.Println(err)
-			setStatus("error opening file for block")
+			wb.setStatus("error opening file for block")
 			continue
 		}
 
@@ -1154,7 +1172,7 @@ func verifiedBlockWriter() {
 			if err != nil {
 				log.Println(err)
 			}
-			setStatus("error seeking in file for block")
+			wb.setStatus("error seeking in file for block")
 			continue
 		}
 
@@ -1164,14 +1182,14 @@ func verifiedBlockWriter() {
 			if err != nil {
 				log.Println(err)
 			}
-			setStatus("error writing to file for block")
+			wb.setStatus("error writing to file for block")
 			continue
 		}
 
 		err = f.Close()
 		if err != nil {
 			log.Println(err)
-			setStatus("error closing file for block")
+			wb.setStatus("error closing file for block")
 			continue
 		}
 
@@ -1180,21 +1198,21 @@ func verifiedBlockWriter() {
 	}
 }
 
-func writeZeroFile(name string, size int64) {
-	setStatus("writing empty file for " + name)
+func (wb *WhiteBox) writeZeroFile(name string, size int64) {
+	wb.setStatus("writing empty file for " + name)
 
 	fileDir := filepath.Dir(name)
 	err := os.MkdirAll(fileDir, 0700)
 	if err != nil {
 		log.Println(err)
-		setStatus("error when prepping dirs")
+		wb.setStatus("error when prepping dirs")
 		return
 	}
 
 	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_RDWR, 0666)
 	if err != nil {
 		log.Println(err)
-		setStatus("error when prepping file")
+		wb.setStatus("error when prepping file")
 		return
 	}
 
@@ -1211,7 +1229,7 @@ func writeZeroFile(name string, size int64) {
 			if err != nil {
 				log.Println(err)
 			}
-			setStatus("error writing empty file")
+			wb.setStatus("error writing empty file")
 			return
 		}
 		remaining -= int64(mb100)
@@ -1224,13 +1242,13 @@ func writeZeroFile(name string, size int64) {
 			if err != nil {
 				log.Println(err)
 			}
-			setStatus("error writing empty file")
+			wb.setStatus("error writing empty file")
 			return
 		}
 	}
 
 	f.Sync()
-	setStatus("empty file written for " + name)
+	wb.setStatus("empty file written for " + name)
 }
 
 func advertiseAll() {
@@ -1252,7 +1270,7 @@ func minimum(a, b int) int {
 	return b
 }
 
-func partyStart(name string) string {
+func (wb *WhiteBox) partyStart(name string) string {
 	idBytes := make([]byte, 16)
 	rand.Read(idBytes)
 
@@ -1265,7 +1283,7 @@ func partyStart(name string) string {
 	party.Id = name + idHex[:len(idHex)-len(name)]
 	match, err := regexp.MatchString("^[a-zA-Z0-9]{32}$", party.Id)
 	if err != nil || !match {
-		setStatus("error invalid party id (start)")
+		wb.setStatus("error invalid party id (start)")
 		return ""
 	}
 
@@ -1273,7 +1291,7 @@ func partyStart(name string) string {
 	party.SeenChats = make(map[string]bool)
 	party.Packs = make(map[string]*Pack)
 
-	party.MinList[peerSelf.Id()] = 0
+	party.MinList[party.WhiteBox.PeerSelf.Id()] = 0
 
 	parties[party.Id] = party
 

@@ -2,6 +2,7 @@ package whitebox
 
 import (
 	"bufio"
+	"container/list"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -11,20 +12,44 @@ import (
 	"github.com/kevinburke/nacl/box"
 	"github.com/kevinburke/nacl/sign"
 	"log"
+	"math/big"
 	"net"
 	"strings"
 	"time"
 )
 
-type WhiteBox struct {
-	Name string
-	ChatChannel chan partylib.Chat
+type Status struct {
+	Priority string
+	Message  string
 }
 
-func New(name string) *WhiteBox {
+type WhiteBox struct {
+	BsId          string
+	ChatChannel   chan partylib.Chat
+	StatusChannel chan Status
+	Self          Self
+	PeerSelf      Peer
+	PeerTable     [256]*list.List
+	IdealPeerIds  [256]*big.Int
+	SeenChats     map[string]bool
+}
+
+func New(dir, addr, port string) *WhiteBox {
 	wb := new(WhiteBox)
-	wb.Name = name
 	wb.ChatChannel = make(chan partylib.Chat, 100)
+	wb.StatusChannel = make(chan Status, 100)
+	wb.SeenChats = make(map[string]bool)
+
+	wb.InitFiles(dir)
+	wb.GetKeys(addr + ":" + port)
+	wb.CalculateIdealTableSelf(wb.Self.SignPub)
+	wb.InitTable(wb.Self.SignPub)
+
+	wb.BsId = fmt.Sprintf("%s/%s/%s", addr, port, wb.PeerSelf.ShortId())
+
+	log.Println(wb.BsId)
+	wb.chatStatus(wb.BsId)
+
 	return wb
 }
 
@@ -112,28 +137,20 @@ type MessagePing struct {
 	Time        time.Time
 }
 
-var self Self
-var peerSelf Peer
-var bsId string
-
-var seenChats map[string]bool
-var chatChan chan string
-var statusChan chan string
-
-func idFront(id string) (string, error) {
+func (wb *WhiteBox) idFront(id string) (string, error) {
 	min, err := idToMin(id)
 	if err != nil {
-		setStatus(err.Error())
+		wb.setStatus(err.Error())
 		return "", err
 	}
 
 	return hex.EncodeToString(min.SignPub[:]), nil
 }
 
-func idBack(id string) (string, error) {
+func (wb *WhiteBox) idBack(id string) (string, error) {
 	min, err := idToMin(id)
 	if err != nil {
-		setStatus(err.Error())
+		wb.setStatus(err.Error())
 		return "", err
 	}
 
@@ -168,7 +185,7 @@ func idToMin(id string) (*MinPeer, error) {
 	return min, nil
 }
 
-func getKeys() {
+func (wb *WhiteBox) GetKeys(address string) {
 	r := rand.Reader
 	signPub, signPrv, err := sign.Keypair(r)
 	if err != nil {
@@ -180,15 +197,16 @@ func getKeys() {
 		log.Fatal(err)
 	}
 
-	self.SignPub = signPub
-	self.SignPrv = signPrv
-	self.EncPub = encPub
-	self.EncPrv = encPrv
+	wb.Self.SignPub = signPub
+	wb.Self.SignPrv = signPrv
+	wb.Self.EncPub = encPub
+	wb.Self.EncPrv = encPrv
+	wb.Self.Address = address
 
-	peerSelf.SignPub = self.SignPub
-	peerSelf.EncPub = self.EncPub
-	peerSelf.Address = self.Address
-	log.Println(peerSelf.Id())
+	wb.PeerSelf.SignPub = wb.Self.SignPub
+	wb.PeerSelf.EncPub = wb.Self.EncPub
+	wb.PeerSelf.Address = wb.Self.Address
+	log.Println(wb.PeerSelf.Id())
 }
 
 func (wb *WhiteBox) recv(address string, port uint16) {
@@ -209,7 +227,7 @@ func (wb *WhiteBox) recv(address string, port uint16) {
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
-			setStatus("error reading")
+			wb.setStatus("error reading")
 		}
 
 		log.Println("got", line)
@@ -219,11 +237,18 @@ func (wb *WhiteBox) recv(address string, port uint16) {
 
 }
 
-func setStatus(status string) {
-	fmt.Println(status)
+func (wb *WhiteBox) setStatus(message string) {
+	status := Status{
+		Priority: "low",
+		Message:  message,
+	}
+	wb.StatusChannel <- status
 }
 
-func chatStatus(status string) {
-	fmt.Println(status)
+func (wb *WhiteBox) chatStatus(message string) {
+	status := Status{
+		Priority: "high",
+		Message:  message,
+	}
+	wb.StatusChannel <- status
 }
-

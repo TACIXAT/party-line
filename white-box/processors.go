@@ -23,11 +23,11 @@ func (wb *WhiteBox) processMessage(strMsg string) {
 	if err != nil {
 		log.Println(err)
 		log.Println(strMsg)
-		setStatus("invalid json message received")
+		wb.setStatus("invalid json message received")
 		return
 	}
 
-	if !env.Time.IsZero() && env.To != peerSelf.Id() {
+	if !env.Time.IsZero() && env.To != wb.PeerSelf.Id() {
 		_, seen := noReroute[env.Time]
 		if !seen {
 			return
@@ -35,35 +35,35 @@ func (wb *WhiteBox) processMessage(strMsg string) {
 
 		noReroute[env.Time] = true
 
-		route(env)
+		wb.route(env)
 		return
 	}
 
 	switch env.Type {
 	case "announce":
-		processAnnounce(env)
+		wb.processAnnounce(env)
 	case "bootstrap":
-		processBootstrap(env)
+		wb.processBootstrap(env)
 	case "chat":
 		wb.processChat(env)
 	case "disconnect":
-		processDisconnect(env)
+		wb.processDisconnect(env)
 	case "request":
-		processSuggestionRequest(env)
+		wb.processSuggestionRequest(env)
 	case "suggestions":
-		processSuggestions(env)
+		wb.processSuggestions(env)
 	case "ping":
-		processPing(env)
+		wb.processPing(env)
 	case "pulse":
-		processPulse(env)
+		wb.processPulse(env)
 	case "verifybs":
-		processVerify(env)
+		wb.processVerify(env)
 	case "party":
-		processParty(env)
+		wb.processParty(env)
 	case "invite":
 		wb.processInvite(env)
 	default:
-		chatStatus("unknown msg type: " + env.Type)
+		wb.chatStatus("unknown msg type: " + env.Type) // TODO: chat status
 	}
 
 	// chatStatus(fmt.Sprintf("got %s", env.Type))
@@ -90,7 +90,7 @@ func verifyEnvelope(env *Envelope, caller string) ([]byte, error) {
 func (wb *WhiteBox) processChat(env *Envelope) {
 	jsonData, err := verifyEnvelope(env, "chat")
 	if err != nil {
-		setStatus(err.Error())
+		wb.setStatus(err.Error())
 		return
 	}
 
@@ -98,17 +98,17 @@ func (wb *WhiteBox) processChat(env *Envelope) {
 	err = json.Unmarshal(jsonData, &msgChat)
 	if err != nil {
 		log.Println(err)
-		setStatus("error invalid json (chat)")
+		wb.setStatus("error invalid json (chat)")
 		return
 	}
 
 	if msgChat.Min.Id() != env.From {
-		setStatus("error invalid peer (chat)")
+		wb.setStatus("error invalid peer (chat)")
 		return
 	}
 
 	uniqueId := env.From + "." + msgChat.Time.String()
-	_, seen := seenChats[uniqueId]
+	_, seen := wb.SeenChats[uniqueId]
 	if !seen {
 		chat := partylib.Chat{
 			Time:    time.Now(),
@@ -117,17 +117,17 @@ func (wb *WhiteBox) processChat(env *Envelope) {
 			Message: msgChat.Message}
 
 		wb.addChat(chat)
-		flood(env)
-		seenChats[uniqueId] = true
+		wb.flood(env)
+		wb.SeenChats[uniqueId] = true
 	}
 
 	cacheMin(msgChat.Min)
 }
 
-func processBootstrap(env *Envelope) {
+func (wb *WhiteBox) processBootstrap(env *Envelope) {
 	jsonData, err := verifyEnvelope(env, "bs")
 	if err != nil {
-		setStatus(err.Error())
+		wb.setStatus(err.Error())
 		return
 	}
 
@@ -135,32 +135,32 @@ func processBootstrap(env *Envelope) {
 	err = json.Unmarshal(jsonData, peer)
 	if err != nil {
 		log.Println(err)
-		setStatus("error invalid json (bs)")
+		wb.setStatus("error invalid json (bs)")
 		return
 	}
 
 	if env.From != peer.Id() {
-		setStatus("id does not match from (bs)")
+		wb.setStatus("id does not match from (bs)")
 		return
 	}
 
 	peerConn, err := net.Dial("udp", peer.Address)
 	if err != nil {
 		log.Println(err)
-		setStatus("could not connect to peer (bs)")
+		wb.setStatus("could not connect to peer (bs)")
 		return
 	}
 
 	peer.Conn = peerConn
 
-	sendVerify(peer)
-	addPeer(peer)
+	wb.sendVerify(peer)
+	wb.addPeer(peer)
 }
 
-func processVerify(env *Envelope) {
+func (wb *WhiteBox) processVerify(env *Envelope) {
 	jsonData, err := verifyEnvelope(env, "bsverify")
 	if err != nil {
-		setStatus(err.Error())
+		wb.setStatus(err.Error())
 		return
 	}
 
@@ -168,33 +168,33 @@ func processVerify(env *Envelope) {
 	err = json.Unmarshal(jsonData, peer)
 	if err != nil {
 		log.Println(err)
-		setStatus("error invalid json (bsverify)")
+		wb.setStatus("error invalid json (bsverify)")
 		return
 	}
 
 	if env.From != peer.Id() {
-		setStatus("id does not match from (bsverify)")
+		wb.setStatus("id does not match from (bsverify)")
 		return
 	}
 
 	peerConn, err := net.Dial("udp", peer.Address)
 	if err != nil {
 		log.Println(err)
-		setStatus("could not connect to peer (bsverify)")
+		wb.setStatus("could not connect to peer (bsverify)")
 		return
 	}
 
 	peer.Conn = peerConn
-	addPeer(peer)
-	setStatus("verified")
-	sendAnnounce(peer)
-	sendSuggestionRequest(peer)
+	wb.addPeer(peer)
+	wb.setStatus("verified")
+	wb.sendAnnounce(peer)
+	wb.sendSuggestionRequest(peer)
 }
 
-func processAnnounce(env *Envelope) {
+func (wb *WhiteBox) processAnnounce(env *Envelope) {
 	jsonData, err := verifyEnvelope(env, "announce")
 	if err != nil {
-		setStatus(err.Error())
+		wb.setStatus(err.Error())
 		return
 	}
 
@@ -202,11 +202,11 @@ func processAnnounce(env *Envelope) {
 	err = json.Unmarshal(jsonData, peer)
 	if err != nil {
 		log.Println(err)
-		setStatus("error invalid json (announce)")
+		wb.setStatus("error invalid json (announce)")
 		return
 	}
 
-	if peer.Id() == peerSelf.Id() {
+	if peer.Id() == wb.PeerSelf.Id() {
 		return
 	}
 
@@ -215,26 +215,26 @@ func processAnnounce(env *Envelope) {
 		peerConn, err := net.Dial("udp", peer.Address)
 		if err != nil {
 			log.Println(err)
-			setStatus("could not connect to peer (bsverify)")
+			wb.setStatus("could not connect to peer (bsverify)")
 			return
 		}
 
 		peer.Conn = peerConn
-		addPeer(peer)
+		wb.addPeer(peer)
 	}
 
 	if !seen || !cache.Announced {
-		flood(env)
+		wb.flood(env)
 		cache = peerCache[peer.Id()]
 		cache.Announced = true
 		peerCache[peer.Id()] = cache
 	}
 }
 
-func processSuggestionRequest(env *Envelope) {
+func (wb *WhiteBox) processSuggestionRequest(env *Envelope) {
 	jsonData, err := verifyEnvelope(env, "request")
 	if err != nil {
-		setStatus(err.Error())
+		wb.setStatus(err.Error())
 		return
 	}
 
@@ -242,12 +242,12 @@ func processSuggestionRequest(env *Envelope) {
 	err = json.Unmarshal(jsonData, &request)
 	if err != nil {
 		log.Println(err)
-		setStatus("error invalid json (request)")
+		wb.setStatus("error invalid json (request)")
 		return
 	}
 
-	if request.To != peerSelf.Id() {
-		setStatus("error invalid to (request)")
+	if request.To != wb.PeerSelf.Id() {
+		wb.setStatus("error invalid to (request)")
 		return
 	}
 
@@ -257,24 +257,24 @@ func processSuggestionRequest(env *Envelope) {
 	peerConn, err := net.Dial("udp", peer.Address)
 	if err != nil {
 		log.Println(err)
-		setStatus("could not connect to peer (request)")
+		wb.setStatus("could not connect to peer (request)")
 		return
 	}
 
 	peer.Conn = peerConn
 
-	sendSuggestions(peer, env.Data)
+	wb.sendSuggestions(peer, env.Data)
 
 	cache, seen := peerCache[peer.Id()]
 	if !seen || !cache.Added {
-		addPeer(peer)
+		wb.addPeer(peer)
 	}
 }
 
-func processSuggestions(env *Envelope) {
+func (wb *WhiteBox) processSuggestions(env *Envelope) {
 	jsonData, err := verifyEnvelope(env, "suggestions")
 	if err != nil {
-		setStatus(err.Error())
+		wb.setStatus(err.Error())
 		return
 	}
 
@@ -282,14 +282,14 @@ func processSuggestions(env *Envelope) {
 	err = json.Unmarshal(jsonData, &suggestions)
 	if err != nil {
 		log.Println(err)
-		setStatus("error invalid json (suggestions)")
+		wb.setStatus("error invalid json (suggestions)")
 		return
 	}
 
 	requestData := suggestions.RequestData
-	verified := sign.Verify(requestData, self.SignPub)
+	verified := sign.Verify(requestData, wb.Self.SignPub)
 	if !verified {
-		setStatus("error originating req not signed self (suggestions)")
+		wb.setStatus("error originating req not signed self (suggestions)")
 		return
 	}
 
@@ -301,12 +301,12 @@ func processSuggestions(env *Envelope) {
 		peerConn, err := net.Dial("udp", peer.Address)
 		if err != nil {
 			log.Println(err)
-			setStatus("could not connect to peer (suggestions)")
+			wb.setStatus("could not connect to peer (suggestions)")
 			return
 		}
 
 		peer.Conn = peerConn
-		addPeer(peer)
+		wb.addPeer(peer)
 	}
 
 	for _, newPeer := range suggestions.SuggestedPeers {
@@ -315,20 +315,20 @@ func processSuggestions(env *Envelope) {
 			peerConn, err := net.Dial("udp", newPeer.Address)
 			if err != nil {
 				log.Println(err)
-				setStatus("could not connect to new peer (suggestions)")
+				wb.setStatus("could not connect to new peer (suggestions)")
 				continue
 			}
 
 			newPeer.Conn = peerConn
-			sendSuggestionRequest(&newPeer)
+			wb.sendSuggestionRequest(&newPeer)
 		}
 	}
 }
 
-func processDisconnect(env *Envelope) {
+func (wb *WhiteBox) processDisconnect(env *Envelope) {
 	jsonData, err := verifyEnvelope(env, "disconnect")
 	if err != nil {
-		setStatus(err.Error())
+		wb.setStatus(err.Error())
 		return
 	}
 
@@ -336,36 +336,36 @@ func processDisconnect(env *Envelope) {
 	err = json.Unmarshal(jsonData, &messageTime)
 	if err != nil {
 		log.Println(err)
-		setStatus("error invalid json (disconnect)")
+		wb.setStatus("error invalid json (disconnect)")
 		return
 	}
 
 	if messageTime.MessageType != -1 {
-		setStatus("error invalid message type (disconnect)")
+		wb.setStatus("error invalid message type (disconnect)")
 		return
 	}
 
-	idShort, err := idFront(env.From)
+	idShort, err := wb.idFront(env.From)
 	if err != nil {
-		setStatus("error bad id (disconnect)")
+		wb.setStatus("error bad id (disconnect)")
 		return
 	}
 
-	removePeer(idShort)
+	wb.removePeer(idShort)
 
 	cache, seen := peerCache[env.From]
 	if !seen || !cache.Disconnected {
 		cache.Disconnected = true
 		peerCache[env.From] = cache
 
-		flood(env)
+		wb.flood(env)
 	}
 }
 
-func processPing(env *Envelope) {
+func (wb *WhiteBox) processPing(env *Envelope) {
 	jsonData, err := verifyEnvelope(env, "ping")
 	if err != nil {
-		setStatus(err.Error())
+		wb.setStatus(err.Error())
 		return
 	}
 
@@ -373,23 +373,23 @@ func processPing(env *Envelope) {
 	err = json.Unmarshal(jsonData, &messagePing)
 	if err != nil {
 		log.Println(err)
-		setStatus("error invalid json (ping)")
+		wb.setStatus("error invalid json (ping)")
 		return
 	}
 
 	if messagePing.MessageType != 0 {
-		setStatus("error invalid message type (ping)")
+		wb.setStatus("error invalid message type (ping)")
 		return
 	}
 
 	min := messagePing.Min
-	sendPulse(min)
+	wb.sendPulse(min)
 }
 
-func processPulse(env *Envelope) {
+func (wb *WhiteBox) processPulse(env *Envelope) {
 	jsonData, err := verifyEnvelope(env, "pulse")
 	if err != nil {
-		setStatus(err.Error())
+		wb.setStatus(err.Error())
 		return
 	}
 
@@ -397,18 +397,18 @@ func processPulse(env *Envelope) {
 	err = json.Unmarshal(jsonData, &messageTime)
 	if err != nil {
 		log.Println(err)
-		setStatus("error invalid json (pulse)")
+		wb.setStatus("error invalid json (pulse)")
 		return
 	}
 
 	if messageTime.MessageType != 1 {
-		setStatus("error invalid message type (pulse)")
+		wb.setStatus("error invalid message type (pulse)")
 		return
 	}
 
-	idShort, err := idFront(env.From)
+	idShort, err := wb.idFront(env.From)
 	if err != nil {
-		setStatus("error bad id (disconnect)")
+		wb.setStatus("error bad id (disconnect)")
 		return
 	}
 

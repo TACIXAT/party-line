@@ -576,7 +576,7 @@ func handleHelp() {
 	return
 }
 
-func handleUserInput(buf string) {
+func handleUserInput(wb *WhiteBox, buf string) {
 	if len(buf) == 0 {
 		return
 	}
@@ -608,7 +608,7 @@ func handleUserInput(buf string) {
 	case "/get":
 		handleGet(toks)
 	case "/rescan":
-		resetPacks()
+		wb.resetPacks()
 	case "/help":
 		handleHelp()
 	case "/quit":
@@ -620,7 +620,7 @@ func handleUserInput(buf string) {
 	}
 }
 
-func userInterface() {
+func userInterface(wb *WhiteBox) {
 	err := termui.Init()
 	if err != nil {
 		panic(err)
@@ -660,7 +660,7 @@ func userInterface() {
 
 	buf := ""
 	termui.Handle("/sys/kbd/<enter>", func(evt termui.Event) {
-		handleUserInput(buf)
+		handleUserInput(wb, buf)
 		buf = ""
 		inputBox.Text = buf
 		termui.Clear()

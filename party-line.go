@@ -1,10 +1,13 @@
 package main
 
 import (
-	"github.com/douggard/party-line/white-box"
 	"flag"
-	"net"
+	"fmt"
+	"github.com/douggard/party-line/white-box"
 	"log"
+	"net"
+	"os"
+	"strconv"
 )
 
 /*
@@ -26,6 +29,9 @@ TODO:
 
 	measure block packet size
 	increase block size
+
+	CONV TODO:
+		status receiver go routine
 */
 
 var chatChan chan string
@@ -45,12 +51,10 @@ func main() {
 	shareFlag = flag.String("share", "", "Base directory to share from.")
 	flag.Parse()
 
-	wb := whitebox.New("default")
 	dir := ""
 	if shareFlag != nil {
 		dir = *shareFlag
 	}
-	wb.InitFiles(dir)
 
 	// get port
 	var port uint16 = uint16(*portFlag)
@@ -68,36 +72,28 @@ func main() {
 		defer natCleanup()
 	}
 
-	log.Println(extIP)
+	// build self info (addr, keys, id)
+	portStr := strconv.FormatUint(uint64(port), 10)
 
-	// // build self info (addr, keys, id)
-	// portStr := strconv.FormatUint(uint64(port), 10)
-	// self.Address = extIP.String() + ":" + portStr
-	// getKeys()
+	wb := whitebox.New(dir, extIP.String(), portStr)
 
-	// // log to file
-	// logname := fmt.Sprintf("/tmp/partylog.%s", peerSelf.Id()[:6])
-	// f, err := os.OpenFile(logname, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	// if err != nil {
-	// 	log.Fatalf("error opening file: %v", err)
-	// }
-	// defer f.Close()
+	// log to file
+	// TODO: change name irl
+	logname := fmt.Sprintf("/tmp/partylog.%s", wb.PeerSelf.Id()[:6])
+	f, err := os.OpenFile(logname, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
 
-	// log.SetFlags(log.LstdFlags | log.Lshortfile)
-	// log.SetOutput(f)
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	log.SetOutput(f)
 
-	// calculateIdealTableSelf(self.SignPub)
-	// initTable(self.SignPub)
+	chatChan = make(chan string, 1)
+	statusChan = make(chan string, 1)
 
-	// seenChats = make(map[string]bool)
-	// chatChan = make(chan string, 1)
-	// statusChan = make(chan string, 1)
-	// bsId = fmt.Sprintf("%s/%s/%s", extIP.String(), portStr, peerSelf.ShortId())
-	// log.Println(bsId)
-	// chatStatus(bsId)
-
-	// // var wg sync.WaitGroup
-	// // ctrlChan := make(chan bool, 1)
+	// var wg sync.WaitGroup
+	// ctrlChan := make(chan bool, 1)
 
 	// // start network receiver
 	// go recv("", port)
@@ -106,5 +102,5 @@ func main() {
 	// go requestSender()
 	// go verifiedBlockWriter()
 
-	// userInterface()
+	// userInterface(wb)
 }

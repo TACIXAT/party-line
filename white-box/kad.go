@@ -33,7 +33,7 @@ func init() {
 	peerCache = make(map[string]PeerCache)
 }
 
-func initTable(idBytes []byte) {
+func (wb *WhiteBox) InitTable(idBytes []byte) {
 	idInt := new(big.Int)
 	idInt.SetBytes(idBytes)
 
@@ -63,11 +63,11 @@ func calculateIdealTable(idBytes []byte) [256]*big.Int {
 	return idealIds
 }
 
-func calculateIdealTableSelf(idBytes []byte) {
+func (wb *WhiteBox) CalculateIdealTableSelf(idBytes []byte) {
 	idealPeerIds = calculateIdealTable(idBytes)
 }
 
-func removePeer(peerId string) {
+func (wb *WhiteBox) removePeer(peerId string) {
 	// TODO: use closest index instead of exhaustive search
 	bytesId, err := hex.DecodeString(peerId)
 	if err != nil {
@@ -92,12 +92,12 @@ func removePeer(peerId string) {
 	}
 
 	if !emptyList && !havePeers() {
-		chatStatus("all friends gone, bootstrap some new ones")
+		wb.chatStatus("all friends gone, bootstrap some new ones")
 		emptyList = true
 	}
 }
 
-func removeStalePeers() {
+func (wb *WhiteBox) removeStalePeers() {
 	removed := false
 	for i := 0; i < 256; i++ {
 		removeList := make([]*list.Element, 0)
@@ -109,14 +109,14 @@ func removeStalePeers() {
 		}
 
 		for _, element := range removeList {
-			setStatus("removed stale peer")
+			wb.setStatus("removed stale peer")
 			peerTable[i].Remove(element)
 			removed = true
 		}
 	}
 
 	if removed && !havePeers() && !emptyList {
-		chatStatus("all friends gone, bootstrap some new ones")
+		wb.chatStatus("all friends gone, bootstrap some new ones")
 		emptyList = true
 	}
 }
@@ -144,7 +144,7 @@ func cacheMin(min MinPeer) {
 	peerCache[min.Id()] = cache
 }
 
-func addPeer(peer *Peer) {
+func (wb *WhiteBox) addPeer(peer *Peer) {
 	cache, seen := peerCache[peer.Id()]
 	if seen && cache.Added {
 		return
@@ -181,7 +181,7 @@ func addPeer(peer *Peer) {
 	}
 
 	if emptyList {
-		chatStatus("peer added, happy chatting!")
+		wb.chatStatus("peer added, happy chatting!")
 		emptyList = false
 	}
 }

@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func route(env *Envelope) {
+func (wb *WhiteBox) route(env *Envelope) {
 	if env.Time.IsZero() {
 		env.Time = time.Now().UTC()
 	}
@@ -23,7 +23,7 @@ func route(env *Envelope) {
 		return
 	}
 
-	shortId, err := idFront(env.To)
+	shortId, err := wb.idFront(env.To)
 	if err != nil {
 		log.Println(err)
 		return
@@ -39,7 +39,7 @@ func route(env *Envelope) {
 	idInt.SetBytes(bytesId)
 
 	selfDist := new(big.Int)
-	selfDist.SetBytes(peerSelf.SignPub)
+	selfDist.SetBytes(wb.PeerSelf.SignPub)
 	selfDist.Xor(selfDist, idInt)
 
 	closest := findClosestN(bytesId, 3)
@@ -57,7 +57,7 @@ func route(env *Envelope) {
 	}
 }
 
-func flood(env *Envelope) {
+func (wb *WhiteBox) flood(env *Envelope) {
 	jsonEnv, err := json.Marshal(env)
 	if err != nil {
 		log.Println(err)
@@ -80,24 +80,25 @@ func flood(env *Envelope) {
 					currPeer.Conn.Write(
 						[]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
 				} else {
-					chatStatus(fmt.Sprintf("currPeer conn nil %s", currPeer.Id()))
+					wb.chatStatus(fmt.Sprintf(
+						"currPeer conn nil %s", currPeer.Id()))
 				}
 				sentPeers[currPeer.Id()] = true
 			}
 		}
 	}
 
-	setStatus("flooded")
+	wb.setStatus("flooded")
 }
 
-func sendSuggestionRequest(peer *Peer) {
+func (wb *WhiteBox) sendSuggestionRequest(peer *Peer) {
 	env := Envelope{
 		Type: "request",
-		From: peerSelf.Id(),
+		From: wb.PeerSelf.Id(),
 		To:   peer.Id()}
 
 	request := MessageSuggestionRequest{
-		Peer: peerSelf,
+		Peer: wb.PeerSelf,
 		To:   peer.Id()}
 
 	jsonReq, err := json.Marshal(request)
@@ -106,7 +107,7 @@ func sendSuggestionRequest(peer *Peer) {
 		return
 	}
 
-	env.Data = sign.Sign([]byte(jsonReq), self.SignPrv)
+	env.Data = sign.Sign([]byte(jsonReq), wb.Self.SignPrv)
 
 	jsonEnv, err := json.Marshal(env)
 	if err != nil {
@@ -115,13 +116,13 @@ func sendSuggestionRequest(peer *Peer) {
 	}
 
 	peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
-	setStatus("suggestion request sent")
+	wb.setStatus("suggestion request sent")
 }
 
-func sendSuggestions(peer *Peer, requestData []byte) {
+func (wb *WhiteBox) sendSuggestions(peer *Peer, requestData []byte) {
 	env := Envelope{
 		Type: "suggestions",
-		From: peerSelf.Id(),
+		From: wb.PeerSelf.Id(),
 		To:   peer.Id()}
 
 	// calculate ideal for id
@@ -159,7 +160,7 @@ func sendSuggestions(peer *Peer, requestData []byte) {
 	}
 
 	suggestions := MessageSuggestions{
-		Peer:           peerSelf,
+		Peer:           wb.PeerSelf,
 		RequestData:    requestData,
 		SuggestedPeers: peerSet}
 
@@ -169,7 +170,7 @@ func sendSuggestions(peer *Peer, requestData []byte) {
 		return
 	}
 
-	env.Data = sign.Sign([]byte(jsonSuggestions), self.SignPrv)
+	env.Data = sign.Sign([]byte(jsonSuggestions), wb.Self.SignPrv)
 
 	jsonEnv, err := json.Marshal(env)
 	if err != nil {
@@ -180,19 +181,19 @@ func sendSuggestions(peer *Peer, requestData []byte) {
 	peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
 }
 
-func sendBootstrap(addr, peerId string) {
+func (wb *WhiteBox) sendBootstrap(addr, peerId string) {
 	env := Envelope{
 		Type: "bootstrap",
-		From: peerSelf.Id(),
+		From: wb.PeerSelf.Id(),
 		To:   peerId}
 
-	jsonBs, err := json.Marshal(peerSelf)
+	jsonBs, err := json.Marshal(wb.PeerSelf)
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
-	env.Data = sign.Sign([]byte(jsonBs), self.SignPrv)
+	env.Data = sign.Sign([]byte(jsonBs), wb.Self.SignPrv)
 
 	jsonEnv, err := json.Marshal(env)
 	if err != nil {
@@ -207,22 +208,22 @@ func sendBootstrap(addr, peerId string) {
 	}
 
 	conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
-	setStatus("bs sent")
+	wb.setStatus("bs sent")
 }
 
-func sendVerify(peer *Peer) {
+func (wb *WhiteBox) sendVerify(peer *Peer) {
 	env := Envelope{
 		Type: "verifybs",
-		From: peerSelf.Id(),
+		From: wb.PeerSelf.Id(),
 		To:   peer.Id()}
 
-	jsonBs, err := json.Marshal(peerSelf)
+	jsonBs, err := json.Marshal(wb.PeerSelf)
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
-	env.Data = sign.Sign([]byte(jsonBs), self.SignPrv)
+	env.Data = sign.Sign([]byte(jsonBs), wb.Self.SignPrv)
 
 	jsonEnv, err := json.Marshal(env)
 	if err != nil {
@@ -231,19 +232,19 @@ func sendVerify(peer *Peer) {
 	}
 
 	peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
-	setStatus("verify sent")
+	wb.setStatus("verify sent")
 }
 
-func sendChat(msg string) {
+func (wb *WhiteBox) sendChat(msg string) {
 	env := Envelope{
 		Type: "chat",
-		From: peerSelf.Id(),
+		From: wb.PeerSelf.Id(),
 		To:   ""}
 
 	msgChat := MessageChat{
 		Message: msg,
 		Time:    time.Now().UTC(),
-		Min:     peerSelf.Min()}
+		Min:     wb.PeerSelf.Min()}
 
 	jsonChat, err := json.Marshal(msgChat)
 	if err != nil {
@@ -265,38 +266,38 @@ func sendChat(msg string) {
 	}
 
 	if len(sendPeers) == 0 {
-		chatStatus("you have no friends, bootstrap to a peer to get started")
+		wb.chatStatus("you have no friends, bootstrap to a peer to get started")
 		return
 	}
 
-	env.Data = sign.Sign([]byte(jsonChat), self.SignPrv)
+	env.Data = sign.Sign([]byte(jsonChat), wb.Self.SignPrv)
 	jsonEnv, err := json.Marshal(env)
 	if err != nil {
 		log.Println(err)
-		setStatus("error marshalling env to json")
+		wb.setStatus("error marshalling env to json")
 		return
 	}
 
 	for _, peer := range sendPeers {
-		// closed := box.EasySeal([]byte(jsonChat), peer.EncPub, self.EncPrv)
+		// closed := box.EasySeal([]byte(jsonChat), peer.EncPub, wb.Self.EncPrv)
 		peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
 	}
-	setStatus("chat sent")
+	wb.setStatus("chat sent")
 }
 
-func sendAnnounce(peer *Peer) {
+func (wb *WhiteBox) sendAnnounce(peer *Peer) {
 	env := Envelope{
 		Type: "announce",
-		From: peerSelf.Id(),
+		From: wb.PeerSelf.Id(),
 		To:   ""}
 
-	jsonAnnounce, err := json.Marshal(peerSelf)
+	jsonAnnounce, err := json.Marshal(wb.PeerSelf)
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
-	env.Data = sign.Sign([]byte(jsonAnnounce), self.SignPrv)
+	env.Data = sign.Sign([]byte(jsonAnnounce), wb.Self.SignPrv)
 
 	jsonEnv, err := json.Marshal(env)
 	if err != nil {
@@ -305,13 +306,13 @@ func sendAnnounce(peer *Peer) {
 	}
 
 	peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
-	setStatus("announce sent")
+	wb.setStatus("announce sent")
 }
 
-func sendDisconnect() {
+func (wb *WhiteBox) sendDisconnect() {
 	env := Envelope{
 		Type: "disconnect",
-		From: peerSelf.Id(),
+		From: wb.PeerSelf.Id(),
 		To:   ""}
 
 	disconnect := MessageTime{
@@ -324,22 +325,22 @@ func sendDisconnect() {
 		return
 	}
 
-	env.Data = sign.Sign([]byte(jsonDisconnect), self.SignPrv)
-	flood(&env)
-	setStatus("disconnect sent")
+	env.Data = sign.Sign([]byte(jsonDisconnect), wb.Self.SignPrv)
+	wb.flood(&env)
+	wb.setStatus("disconnect sent")
 }
 
-func sendPings() {
+func (wb *WhiteBox) sendPings() {
 	for {
 		time.Sleep(time.Second * 30)
-		removeStalePeers()
+		wb.removeStalePeers()
 		env := Envelope{
 			Type: "ping",
-			From: peerSelf.Id(),
+			From: wb.PeerSelf.Id(),
 			To:   ""}
 
 		ping := MessagePing{
-			Min:         peerSelf.Min(),
+			Min:         wb.PeerSelf.Min(),
 			MessageType: 0,
 			Time:        time.Now().UTC()}
 
@@ -349,7 +350,7 @@ func sendPings() {
 			return
 		}
 
-		env.Data = sign.Sign([]byte(jsonPing), self.SignPrv)
+		env.Data = sign.Sign([]byte(jsonPing), wb.Self.SignPrv)
 
 		jsonEnv, err := json.Marshal(env)
 		if err != nil {
@@ -375,10 +376,10 @@ func sendPings() {
 	}
 }
 
-func sendPulse(min MinPeer) {
+func (wb *WhiteBox) sendPulse(min MinPeer) {
 	env := Envelope{
 		Type: "pulse",
-		From: peerSelf.Id(),
+		From: wb.PeerSelf.Id(),
 		To:   min.Id()}
 
 	pulse := MessageTime{
@@ -391,7 +392,7 @@ func sendPulse(min MinPeer) {
 		return
 	}
 
-	env.Data = sign.Sign([]byte(jsonPulse), self.SignPrv)
+	env.Data = sign.Sign([]byte(jsonPulse), wb.Self.SignPrv)
 
-	route(&env)
+	wb.route(&env)
 }

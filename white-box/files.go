@@ -125,7 +125,6 @@ func (pack *Pack) SetPaths(baseDir string) {
 		if !strings.HasPrefix(path, baseDir) {
 			errMsg := "error skipping file " + pack.Name + "for dir traversal"
 			log.Println(errMsg)
-			setStatus(errMsg)
 			continue
 		}
 		file.Path = path
@@ -239,17 +238,17 @@ func sha256Pack(pack *Pack) string {
 	return fmt.Sprintf("%x", hash.Sum(nil))
 }
 
-func sha256File(targetFile *os.File) (string, error) {
+func (wb *WhiteBox) sha256File(targetFile *os.File) (string, error) {
 	_, err := targetFile.Seek(0, 0)
 	if err != nil {
-		setStatus("error could not seek to start of file")
+		wb.setStatus("error could not seek to start of file")
 		log.Println(err)
 		return "", err
 	}
 
 	h := sha256.New()
 	if _, err := io.Copy(h, targetFile); err != nil {
-		setStatus("error could not read file for hash")
+		wb.setStatus("error could not read file for hash")
 		log.Println(err)
 		return "", err
 	}
@@ -278,17 +277,17 @@ func sha256Block(block *Block) string {
 	return fmt.Sprintf("%x", hash.Sum(nil))
 }
 
-func unpackFile(targetFile *os.File) (*DotPack, error) {
+func (wb *WhiteBox) unpackFile(targetFile *os.File) (*DotPack, error) {
 	_, err := targetFile.Seek(0, 0)
 	if err != nil {
-		setStatus("error seek to start of file for unpack")
+		wb.setStatus("error seek to start of file for unpack")
 		log.Println(err)
 		return nil, err
 	}
 
 	contents, err := ioutil.ReadAll(targetFile)
 	if err != nil {
-		setStatus("error could not read file for unpack")
+		wb.setStatus("error could not read file for unpack")
 		log.Println(err)
 		return nil, err
 	}
@@ -296,7 +295,7 @@ func unpackFile(targetFile *os.File) (*DotPack, error) {
 	dotPack := new(DotPack)
 	err = json.Unmarshal(contents, dotPack)
 	if err != nil {
-		setStatus("error could not unmarshal json for unpack")
+		wb.setStatus("error could not unmarshal json for unpack")
 		log.Println(err)
 		return nil, err
 	}
@@ -329,10 +328,10 @@ func rightChild(i uint64) uint64 {
 	return 2*i + 2
 }
 
-func calculateChain(
+func (wb *WhiteBox) calculateChain(
 	targetFile *os.File, size int64) (string, map[string]BlockInfo, error) {
 	if size < 0 {
-		setStatus("error file size less than 0 (c'est une pipe?)")
+		wb.setStatus("error file size less than 0 (c'est une pipe?)")
 		return "", nil, errors.New("file size less than 0")
 	}
 
@@ -347,7 +346,7 @@ func calculateChain(
 	_, err := targetFile.Seek(-lastBlockSize, 2)
 	if err != nil {
 		log.Println(err)
-		setStatus("error seek failed in file")
+		wb.setStatus("error seek failed in file")
 		return "", nil, errors.New("seek failed for file")
 	}
 
@@ -359,7 +358,7 @@ func calculateChain(
 		bytesRead, err := targetFile.Read(buffer)
 		if err != nil && err != io.EOF {
 			log.Println(err)
-			setStatus("error failed read")
+			wb.setStatus("error failed read")
 			return "", nil, errors.New("failed read of file")
 		}
 
@@ -387,7 +386,7 @@ func calculateChain(
 	_, err = targetFile.Seek(0, 0)
 	if err != nil {
 		log.Println(err)
-		setStatus("error could not seek to beginning of file")
+		wb.setStatus("error could not seek to beginning of file")
 		return "", nil, errors.New("could not seek to beginning of file")
 	}
 
@@ -399,7 +398,7 @@ func calculateChain(
 		if err != nil {
 			if err != io.EOF {
 				log.Println(err)
-				setStatus("error could not read file (verify)")
+				wb.setStatus("error could not read file (verify)")
 				return "", nil, errors.New("could not read file (verify)")
 			}
 			break
@@ -418,7 +417,7 @@ func calculateChain(
 		verifyBlockHash := sha256Block(curr)
 		if verifyBlockHash != currBlockHash {
 			log.Println("Bad hash at " + strconv.FormatInt(int64(index), 10))
-			setStatus("error verify failed")
+			wb.setStatus("error verify failed")
 			return "", nil, errors.New("verify failed")
 		}
 
@@ -487,35 +486,35 @@ func fullCoverage(size int64) []uint64 {
 	return coverage
 }
 
-func buildPack(partyId string, path string, targetFile *os.File) {
+func (wb *WhiteBox) buildPack(partyId string, path string, targetFile *os.File) {
 	partyDir := filepath.Join(sharedDir, partyId)
 	partyDirAbs, err := filepath.Abs(partyDir)
 	if err != nil {
 		log.Println(err)
-		setStatus("error could not get absolute path for party dir")
+		wb.setStatus("error could not get absolute path for party dir")
 		return
 	}
 
 	if !strings.HasPrefix(partyDirAbs, sharedDir) {
-		setStatus("error party dir traverses directories")
+		wb.setStatus("error party dir traverses directories")
 		return
 	}
 
 	pack := new(Pack)
 	pack.Peers = make(map[string]time.Time)
-	pack.Peers[peerSelf.Id()] = time.Now().UTC()
+	pack.Peers[wb.PeerSelf.Id()] = time.Now().UTC()
 	pack.State = COMPLETE
 	pack.Files = make([]*PackFileInfo, 0)
 
-	dotPack, err := unpackFile(targetFile)
+	dotPack, err := wb.unpackFile(targetFile)
 	if err != nil {
 		log.Println(err)
-		setStatus("error unpacking pack file")
+		wb.setStatus("error unpacking pack file")
 		return
 	}
 
 	if len(dotPack.Files) == 0 {
-		setStatus("error no files in pack")
+		wb.setStatus("error no files in pack")
 		return
 	}
 
@@ -527,12 +526,12 @@ func buildPack(partyId string, path string, targetFile *os.File) {
 		sharedFilePathAbs, err := filepath.Abs(sharedFilePath)
 		if err != nil {
 			log.Println(err)
-			setStatus("error could not get absolute path for file")
+			wb.setStatus("error could not get absolute path for file")
 			return
 		}
 
 		if !strings.HasPrefix(sharedFilePathAbs, partyDir) {
-			setStatus("error pack file outside of channel dir")
+			wb.setStatus("error pack file outside of channel dir")
 			return
 		}
 
@@ -541,31 +540,31 @@ func buildPack(partyId string, path string, targetFile *os.File) {
 
 		sharedFile, err := os.Open(sharedFilePathAbs)
 		if err != nil {
-			setStatus("error opening file in pack")
+			wb.setStatus("error opening file in pack")
 			log.Println(err)
 			return
 		}
 
 		fileInfo, err := sharedFile.Stat()
 		if err != nil {
-			setStatus("error getting file info for file in pack")
+			wb.setStatus("error getting file info for file in pack")
 			log.Println(err)
 			return
 		}
 
-		fileHash, err := sha256File(sharedFile)
+		fileHash, err := wb.sha256File(sharedFile)
 		if err != nil {
 			log.Println(err)
-			setStatus("error hashing shared file")
+			wb.setStatus("error hashing shared file")
 			return
 		}
 
 		sharedFileSize := fileInfo.Size()
 		firstBlockHash, blockMap, err :=
-			calculateChain(sharedFile, sharedFileSize)
+			wb.calculateChain(sharedFile, sharedFileSize)
 		if err != nil {
 			log.Println(err)
-			setStatus(err.Error())
+			wb.setStatus(err.Error())
 			return
 		}
 
@@ -588,7 +587,7 @@ func buildPack(partyId string, path string, targetFile *os.File) {
 	parties[partyId].Packs[packHash] = pack
 }
 
-func walker(path string, info os.FileInfo, err error) error {
+func (wb *WhiteBox) walker(path string, info os.FileInfo, err error) error {
 	if err != nil {
 		return err
 	}
@@ -597,7 +596,7 @@ func walker(path string, info os.FileInfo, err error) error {
 	relPath = strings.TrimLeft(relPath, "/")
 	toks := strings.Split(relPath, "/")
 	if len(toks) < 1 {
-		setStatus("error bad path when walking")
+		wb.setStatus("error bad path when walking")
 		return nil
 	}
 
@@ -605,7 +604,7 @@ func walker(path string, info os.FileInfo, err error) error {
 	if !info.IsDir() {
 		targetFile, err := os.Open(path)
 		if err != nil {
-			setStatus("could not open files")
+			wb.setStatus("could not open files")
 			return nil
 		}
 
@@ -615,12 +614,12 @@ func walker(path string, info os.FileInfo, err error) error {
 			return nil
 		}
 
-		buildPack(partyId, path, targetFile)
+		wb.buildPack(partyId, path, targetFile)
 	}
 	return nil
 }
 
-func resetPacks() {
+func (wb *WhiteBox) resetPacks() {
 	// check for new and changed packs
 	for partyId, party := range parties {
 		party.ClearPacks()
@@ -631,7 +630,7 @@ func resetPacks() {
 			continue
 		}
 
-		err = filepath.Walk(targetDir, walker)
+		err = filepath.Walk(targetDir, wb.walker)
 	}
 
 	advertiseAll()
