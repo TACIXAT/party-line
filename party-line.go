@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/douggard/party-line/white-box"
+	"github.com/TACIXAT/party-line/white-box"
 	"log"
 	"net"
 	"os"
@@ -96,11 +96,11 @@ func main() {
 	// ctrlChan := make(chan bool, 1)
 
 	// // start network receiver
-	// go recv("", port)
-	// go sendPings()
-	// go fileRequester()
-	// go requestSender()
-	// go verifiedBlockWriter()
+	go wb.Recv("", port)
+	go wb.SendPings()
+	go wb.FileRequester()
+	go wb.RequestSender()
+	go wb.VerifiedBlockWriter()
 
 	// userInterface(wb)
 }

@@ -330,7 +330,7 @@ func (wb *WhiteBox) sendDisconnect() {
 	wb.setStatus("disconnect sent")
 }
 
-func (wb *WhiteBox) sendPings() {
+func (wb *WhiteBox) SendPings() {
 	for {
 		time.Sleep(time.Second * 30)
 		wb.removeStalePeers()

@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/douggard/party-line/party-lib"
+	"github.com/TACIXAT/party-line/party-lib"
 	"github.com/kevinburke/nacl/box"
 	"github.com/kevinburke/nacl/sign"
 	"io"
@@ -1069,7 +1069,7 @@ func (party *PartyLine) chooseBlock(request *PartyRequest) *Block {
 	return block
 }
 
-func fileRequester() {
+func (wb *WhiteBox) FileRequester() {
 	for {
 		for _, party := range parties {
 			for packHash, pack := range party.Packs {
@@ -1148,7 +1148,7 @@ func setBlockWritten(verifiedBlock *VerifiedBlock) {
 	packFileInfo.BlockLookup[block.Index] = verifiedBlock.Hash
 }
 
-func (wb *WhiteBox) verifiedBlockWriter() {
+func (wb *WhiteBox) VerifiedBlockWriter() {
 	for {
 		verifiedBlock := <-verifiedBlockChan
 

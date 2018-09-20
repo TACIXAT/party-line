@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/douggard/party-line/party-lib"
+	"github.com/TACIXAT/party-line/party-lib"
 	"github.com/kevinburke/nacl/sign"
 	"log"
 	"net"

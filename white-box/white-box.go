@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/douggard/party-line/party-lib"
+	"github.com/TACIXAT/party-line/party-lib"
 	"github.com/kevinburke/nacl"
 	"github.com/kevinburke/nacl/box"
 	"github.com/kevinburke/nacl/sign"
@@ -209,7 +209,7 @@ func (wb *WhiteBox) GetKeys(address string) {
 	log.Println(wb.PeerSelf.Id())
 }
 
-func (wb *WhiteBox) recv(address string, port uint16) {
+func (wb *WhiteBox) Recv(address string, port uint16) {
 	addr := net.UDPAddr{
 		Port: int(port),
 		IP:   net.ParseIP(address),
