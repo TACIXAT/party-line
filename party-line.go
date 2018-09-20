@@ -101,6 +101,7 @@ func main() {
 	go wb.FileRequester()
 	go wb.RequestSender()
 	go wb.VerifiedBlockWriter()
+	go wb.Advertise()
 
-	// userInterface(wb)
+	userInterface(wb)
 }

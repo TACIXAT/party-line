@@ -32,6 +32,7 @@ type WhiteBox struct {
 	PeerTable     [256]*list.List
 	IdealPeerIds  [256]*big.Int
 	SeenChats     map[string]bool
+	Parties       map[string]*PartyLine
 }
 
 func New(dir, addr, port string) *WhiteBox {
@@ -46,6 +47,7 @@ func New(dir, addr, port string) *WhiteBox {
 	wb.InitTable(wb.Self.SignPub)
 
 	wb.BsId = fmt.Sprintf("%s/%s/%s", addr, port, wb.PeerSelf.ShortId())
+	wb.Parties = make(map[string]*PartyLine)
 
 	log.Println(wb.BsId)
 	wb.chatStatus(wb.BsId)

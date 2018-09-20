@@ -181,7 +181,7 @@ func (wb *WhiteBox) sendSuggestions(peer *Peer, requestData []byte) {
 	peer.Conn.Write([]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
 }
 
-func (wb *WhiteBox) sendBootstrap(addr, peerId string) {
+func (wb *WhiteBox) SendBootstrap(addr, peerId string) {
 	env := Envelope{
 		Type: "bootstrap",
 		From: wb.PeerSelf.Id(),
@@ -235,7 +235,7 @@ func (wb *WhiteBox) sendVerify(peer *Peer) {
 	wb.setStatus("verify sent")
 }
 
-func (wb *WhiteBox) sendChat(msg string) {
+func (wb *WhiteBox) SendChat(msg string) {
 	env := Envelope{
 		Type: "chat",
 		From: wb.PeerSelf.Id(),
@@ -309,7 +309,7 @@ func (wb *WhiteBox) sendAnnounce(peer *Peer) {
 	wb.setStatus("announce sent")
 }
 
-func (wb *WhiteBox) sendDisconnect() {
+func (wb *WhiteBox) SendDisconnect() {
 	env := Envelope{
 		Type: "disconnect",
 		From: wb.PeerSelf.Id(),

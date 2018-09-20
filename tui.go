@@ -2,7 +2,8 @@ package main
 
 import (
 	"fmt"
-	"github.com/douggard/party-line/party-lib"
+	"github.com/TACIXAT/party-line/party-lib"
+	"github.com/TACIXAT/party-line/white-box"
 	"github.com/gizak/termui"
 	"github.com/mattn/go-runewidth"
 	"log"
@@ -111,9 +112,9 @@ func formatChats() string {
 	return chatStr
 }
 
-func handleBootstrap(toks []string) {
+func handleBootstrap(wb *whitebox.WhiteBox, toks []string) {
 	if len(toks) == 1 {
-		chatStatus(bsId)
+		chatStatus(wb.BsId)
 		return
 	}
 
@@ -134,7 +135,7 @@ func handleBootstrap(toks []string) {
 	id := bsToks[2]
 	addr := ip + ":" + port
 
-	sendBootstrap(addr, id)
+	wb.SendBootstrap(addr, id)
 }
 
 func chatStatus(status string) {
@@ -165,14 +166,14 @@ func redrawChats() {
 	chatChan <- chats
 }
 
-func handleChat(buf string) {
+func handleChat(wb *whitebox.WhiteBox, buf string) {
 	if show == "" || show == "mainline" {
-		sendChat(buf)
+		wb.SendChat(buf)
 		setStatus("sent")
 		return
 	}
 
-	for partyId, party := range parties {
+	for partyId, party := range wb.Parties {
 		if show == partyId {
 			party.SendChat(buf)
 			setStatus("sent")
@@ -214,7 +215,7 @@ func handleStart(toks []string) {
 }
 
 // invite channel
-func handleInvite(toks []string) {
+func handleInvite(wb *whitebox.WhiteBox, toks []string) {
 	if len(toks) < 3 {
 		setStatus("error insufficient args to invite command")
 		return
@@ -224,8 +225,8 @@ func handleInvite(toks []string) {
 	userPrefix := toks[2]
 
 	// iterate parties
-	var party *PartyLine
-	for id, p := range parties {
+	var party *whitebox.PartyLine
+	for id, p := range wb.Parties {
 		if strings.HasPrefix(id, partyPrefix) {
 			if party != nil {
 				setStatus(fmt.Sprintf(
@@ -242,7 +243,7 @@ func handleInvite(toks []string) {
 	}
 
 	// iterate peers
-	var min *MinPeer
+	var min *whitebox.MinPeer
 	for id, _ := range peerCache {
 		front, err := idFront(id)
 		if err != nil {
@@ -276,7 +277,7 @@ func handleInvite(toks []string) {
 }
 
 // show message visibility
-func handleShow(toks []string) {
+func handleShow(wb *whitebox.WhiteBox, toks []string) {
 	if len(toks) < 2 {
 		show = ""
 		redrawChats()
@@ -298,7 +299,7 @@ func handleShow(toks []string) {
 	partyPrefix := toks[1]
 
 	var partyId string
-	for id, _ := range parties {
+	for id, _ := range wb.Parties {
 		if strings.HasPrefix(id, partyPrefix) {
 			if partyId != "" {
 				setStatus(fmt.Sprintf(
@@ -339,7 +340,7 @@ func handleIds(toks []string) {
 }
 
 // send message on channel
-func handleSend(toks []string) {
+func handleSend(wb *whitebox.WhiteBox, toks []string) {
 	if len(toks) < 3 {
 		setStatus("error insufficient args to leave command")
 		return
@@ -350,7 +351,7 @@ func handleSend(toks []string) {
 
 	// iterate parties
 	partyId := ""
-	for id, _ := range parties {
+	for id, _ := range wb.Parties {
 		if strings.HasPrefix(id, partyPrefix) {
 			if partyId != "" {
 				setStatus(fmt.Sprintf(
@@ -366,7 +367,7 @@ func handleSend(toks []string) {
 		return
 	}
 
-	parties[partyId].SendChat(message)
+	wb.Parties[partyId].SendChat(message)
 	return
 }
 
@@ -376,7 +377,7 @@ func handleClear(toks []string) {
 	redrawChats()
 }
 
-func handleList(toks []string) {
+func handleList(wb *whitebox.WhiteBox, toks []string) {
 	show := "both"
 	if len(toks) > 2 {
 		if strings.HasPrefix("invites", toks[1]) {
@@ -388,8 +389,8 @@ func handleList(toks []string) {
 
 	if show == "both" || show == "parties" {
 		chatStatus("      ==== PARTY LIST ====      ")
-		if len(parties) > 0 {
-			for id, _ := range parties {
+		if len(wb.Parties) > 0 {
+			for id, _ := range wb.Parties {
 				chatStatus(fmt.Sprintf("%s", id))
 			}
 		} else {
@@ -409,7 +410,7 @@ func handleList(toks []string) {
 	}
 }
 
-func handleAccept(toks []string) {
+func handleAccept(wb *whitebox.WhiteBox, toks []string) {
 	if len(toks) < 2 {
 		setStatus("error insufficient args to join command")
 		return
@@ -435,10 +436,10 @@ func handleAccept(toks []string) {
 		return
 	}
 
-	acceptInvite(partyId)
+	wb.AcceptInvite(partyId)
 }
 
-func handleLeave(toks []string) {
+func handleLeave(wb *whitebox.WhiteBox, toks []string) {
 	if len(toks) < 2 {
 		setStatus("error insufficient args to leave command")
 		return
@@ -448,7 +449,7 @@ func handleLeave(toks []string) {
 
 	// iterate parties
 	partyId := ""
-	for id, _ := range parties {
+	for id, _ := range wb.Parties {
 		if strings.HasPrefix(id, partyPrefix) {
 			if partyId != "" {
 				setStatus(fmt.Sprintf(
@@ -464,19 +465,19 @@ func handleLeave(toks []string) {
 		return
 	}
 
-	parties[partyId].SendDisconnect()
+	wb.Parties[partyId].SendDisconnect()
 	setStatus("left the party " + partyId)
 }
 
-func handlePacks(toks []string) {
-	for partyId, party := range parties {
+func handlePacks(wb *whitebox.WhiteBox, toks []string) {
+	for partyId, party := range wb.Parties {
 		chatStatus("== " + partyId + " ==")
 		for packHash, pack := range party.Packs {
 			line := "\"" + pack.Name + "\""
 			// TODO: change to count in last TIME
 			line += " (" + strconv.FormatInt(int64(len(pack.Peers)), 10) + ")"
 
-			if pack.State == COMPLETE {
+			if pack.State == whitebox.COMPLETE {
 				line += "*"
 			}
 
@@ -491,7 +492,7 @@ func handlePacks(toks []string) {
 	}
 }
 
-func handleGet(toks []string) {
+func handleGet(wb *whitebox.WhiteBox, toks []string) {
 	// find party
 	if len(toks) < 3 {
 		setStatus("error insufficient args to get command")
@@ -502,7 +503,7 @@ func handleGet(toks []string) {
 
 	// iterate parties
 	partyId := ""
-	for id, _ := range parties {
+	for id, _ := range wb.Parties {
 		if strings.HasPrefix(id, partyPrefix) {
 			if partyId != "" {
 				setStatus(fmt.Sprintf(
@@ -522,7 +523,7 @@ func handleGet(toks []string) {
 
 	// find pack
 	packHash := ""
-	for hash, _ := range parties[partyId].Packs {
+	for hash, _ := range wb.Parties[partyId].Packs {
 		if strings.HasPrefix(hash, hashPrefix) {
 			if packHash != "" {
 				setStatus(fmt.Sprintf(
@@ -538,7 +539,7 @@ func handleGet(toks []string) {
 		return
 	}
 
-	parties[partyId].StartPack(packHash)
+	wb.Parties[partyId].StartPack(packHash)
 }
 
 func handleHelp() {
@@ -576,7 +577,7 @@ func handleHelp() {
 	return
 }
 
-func handleUserInput(wb *WhiteBox, buf string) {
+func handleUserInput(wb *whitebox.WhiteBox, buf string) {
 	if len(buf) == 0 {
 		return
 	}
@@ -584,43 +585,43 @@ func handleUserInput(wb *WhiteBox, buf string) {
 	toks := strings.Split(buf, " ")
 	switch toks[0] {
 	case "/bs":
-		handleBootstrap(toks)
+		handleBootstrap(wb, toks)
 	case "/start":
 		handleStart(toks)
 	case "/invite":
-		handleInvite(toks)
+		handleInvite(wb, toks)
 	case "/accept":
-		handleAccept(toks)
+		handleAccept(wb, toks)
 	case "/list":
-		handleList(toks)
+		handleList(wb, toks)
 	case "/send":
-		handleSend(toks)
+		handleSend(wb, toks)
 	case "/leave":
-		handleLeave(toks)
+		handleLeave(wb, toks)
 	case "/show":
-		handleShow(toks)
+		handleShow(wb, toks)
 	case "/clear":
 		handleClear(toks)
 	case "/ids":
 		handleIds(toks)
 	case "/packs":
-		handlePacks(toks)
+		handlePacks(wb, toks)
 	case "/get":
-		handleGet(toks)
+		handleGet(wb, toks)
 	case "/rescan":
-		wb.resetPacks()
+		wb.RescanPacks()
 	case "/help":
 		handleHelp()
 	case "/quit":
-		disconnectParties()
-		sendDisconnect()
+		wb.DisconnectParties()
+		wb.SendDisconnect()
 		termui.StopLoop()
 	default:
-		handleChat(buf)
+		handleChat(wb, buf)
 	}
 }
 
-func userInterface(wb *WhiteBox) {
+func userInterface(wb *whitebox.WhiteBox) {
 	err := termui.Init()
 	if err != nil {
 		panic(err)

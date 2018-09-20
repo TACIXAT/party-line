@@ -584,7 +584,7 @@ func (wb *WhiteBox) buildPack(partyId string, path string, targetFile *os.File) 
 	sort.Sort(ByFileName(pack.Files))
 	packHash := sha256Pack(pack)
 
-	parties[partyId].Packs[packHash] = pack
+	wb.Parties[partyId].Packs[packHash] = pack
 }
 
 func (wb *WhiteBox) walker(path string, info os.FileInfo, err error) error {
@@ -619,9 +619,9 @@ func (wb *WhiteBox) walker(path string, info os.FileInfo, err error) error {
 	return nil
 }
 
-func (wb *WhiteBox) resetPacks() {
+func (wb *WhiteBox) RescanPacks() {
 	// check for new and changed packs
-	for partyId, party := range parties {
+	for partyId, party := range wb.Parties {
 		party.ClearPacks()
 		targetDir := filepath.Join(sharedDir, partyId)
 
@@ -633,5 +633,5 @@ func (wb *WhiteBox) resetPacks() {
 		err = filepath.Walk(targetDir, wb.walker)
 	}
 
-	advertiseAll()
+	wb.advertiseAll()
 }

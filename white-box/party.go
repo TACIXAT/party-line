@@ -21,7 +21,6 @@ import (
 	"time"
 )
 
-var parties map[string]*PartyLine
 var pending map[string]*PartyLine
 var freshRequests map[string]*Since
 var requestChan chan *PartyRequest
@@ -29,12 +28,10 @@ var verifiedBlockChan chan *VerifiedBlock
 
 func init() {
 	mrand.Seed(time.Now().UTC().UnixNano())
-	parties = make(map[string]*PartyLine)
 	pending = make(map[string]*PartyLine)
 	freshRequests = make(map[string]*Since)
 	requestChan = make(chan *PartyRequest, 100)
 	verifiedBlockChan = make(chan *VerifiedBlock, 100)
-	go advertise()
 }
 
 type VerifiedBlock struct {
@@ -294,7 +291,7 @@ func (party *PartyLine) SendDisconnect() {
 		return
 	}
 
-	delete(parties, party.Id)
+	delete(party.WhiteBox.Parties, party.Id)
 
 	signedPartyDisconnect := sign.Sign(
 		[]byte(jsonPartyDisconnect), party.WhiteBox.Self.SignPrv)
@@ -535,7 +532,7 @@ func (wb *WhiteBox) processParty(env *Envelope) {
 		return
 	}
 
-	party, exists := parties[partyEnv.PartyId]
+	party, exists := wb.Parties[partyEnv.PartyId]
 	if !exists {
 		wb.setStatus("error invalid party (party)")
 		return
@@ -599,7 +596,7 @@ func (wb *WhiteBox) processInvite(env *Envelope) {
 	party.Packs = make(map[string]*Pack)
 
 	_, inPending := pending[party.Id]
-	_, inParties := parties[party.Id]
+	_, inParties := wb.Parties[party.Id]
 
 	if inPending || inParties {
 		wb.setStatus("reinvite ignored for " + party.Id)
@@ -610,10 +607,10 @@ func (wb *WhiteBox) processInvite(env *Envelope) {
 	party.WhiteBox.setStatus(fmt.Sprintf("invite received for %s", party.Id))
 }
 
-func acceptInvite(partyId string) {
+func (wb *WhiteBox) AcceptInvite(partyId string) {
 	party := pending[partyId]
 
-	if _, joined := parties[partyId]; joined {
+	if _, joined := wb.Parties[partyId]; joined {
 		party.WhiteBox.setStatus("error already joined party with id")
 		log.Println("party id in both pending and parties")
 		return
@@ -621,7 +618,7 @@ func acceptInvite(partyId string) {
 
 	delete(pending, partyId)
 	party.SendAnnounce()
-	parties[party.Id] = party
+	wb.Parties[party.Id] = party
 	party.WhiteBox.setStatus(fmt.Sprintf("accepted invite %s", party.Id))
 }
 
@@ -1071,7 +1068,7 @@ func (party *PartyLine) chooseBlock(request *PartyRequest) *Block {
 
 func (wb *WhiteBox) FileRequester() {
 	for {
-		for _, party := range parties {
+		for _, party := range wb.Parties {
 			for packHash, pack := range party.Packs {
 				if pack.State == ACTIVE {
 					party.SendRequests(packHash, pack)
@@ -1098,7 +1095,7 @@ func (wb *WhiteBox) RequestSender() {
 			continue
 		}
 
-		party := parties[request.PartyId]
+		party := wb.Parties[request.PartyId]
 
 		log.Printf("(dbg) got coverage %v\n", request.Coverage)
 
@@ -1251,14 +1248,14 @@ func (wb *WhiteBox) writeZeroFile(name string, size int64) {
 	wb.setStatus("empty file written for " + name)
 }
 
-func advertiseAll() {
-	for _, party := range parties {
+func (wb *WhiteBox) advertiseAll() {
+	for _, party := range wb.Parties {
 		party.AdvertisePacks()
 	}
 }
 
-func disconnectParties() {
-	for _, party := range parties {
+func (wb *WhiteBox) DisconnectParties() {
+	for _, party := range wb.Parties {
 		party.SendDisconnect()
 	}
 }
@@ -1293,14 +1290,14 @@ func (wb *WhiteBox) partyStart(name string) string {
 
 	party.MinList[party.WhiteBox.PeerSelf.Id()] = 0
 
-	parties[party.Id] = party
+	wb.Parties[party.Id] = party
 
 	return party.Id
 }
 
-func advertise() {
+func (wb *WhiteBox) Advertise() {
 	for {
-		advertiseAll()
+		wb.advertiseAll()
 		time.Sleep(60 * time.Second)
 	}
 }
