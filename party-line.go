@@ -34,8 +34,7 @@ TODO:
 	perm nodes
 
 	CONV TODO:
-		status receiver go routine
-		chat receiver go routine
+		no peer connected message
 */
 
 var chatChan chan string
@@ -46,6 +45,27 @@ var portFlag *uint
 var ipFlag *string
 var nonatFlag *bool
 var shareFlag *string
+
+func statusReceiver(wb *whitebox.WhiteBox) {
+	for {
+		status := <-wb.StatusChannel
+		switch status.Priority {
+		case whitebox.TONE_HIGH:
+			chatStatus(status.Message)
+		case whitebox.TONE_LOW:
+			setStatus(status.Message)
+		default:
+			log.Println("unknown priority in message: ", status.Priority)
+		}
+	}
+}
+
+func chatReceiver(wb *whitebox.WhiteBox) {
+	for {
+		chat := <-wb.ChatChannel
+		addChat(chat)
+	}
+}
 
 func main() {
 	debugFlag = flag.Bool("debug", false, "Debug.")
@@ -96,16 +116,11 @@ func main() {
 	chatChan = make(chan string, 1)
 	statusChan = make(chan string, 1)
 
-	// var wg sync.WaitGroup
-	// ctrlChan := make(chan bool, 1)
+	go statusReceiver(wb)
+	go chatReceiver(wb)
 
-	// // start network receiver
-	go wb.Recv("", port)
-	go wb.SendPings()
-	go wb.FileRequester()
-	go wb.RequestSender()
-	go wb.VerifiedBlockWriter()
-	go wb.Advertise()
+	// start network receiver
+	wb.Run(port)
 
 	userInterface(wb)
 }

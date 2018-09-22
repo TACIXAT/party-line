@@ -19,9 +19,14 @@ import (
 )
 
 type Status struct {
-	Priority string
+	Priority int
 	Message  string
 }
+
+const (
+	TONE_LOW = iota
+	TONE_HIGH
+)
 
 type WhiteBox struct {
 	BsId              string
@@ -41,6 +46,15 @@ type WhiteBox struct {
 	RequestChan       chan *PartyRequest
 	VerifiedBlockChan chan *VerifiedBlock
 	NoReroute         map[time.Time]bool
+}
+
+func (wb *WhiteBox) Run(port uint16) {
+	go wb.Recv("", port)
+	go wb.SendPings()
+	go wb.FileRequester()
+	go wb.RequestSender()
+	go wb.VerifiedBlockWriter()
+	go wb.Advertise()
 }
 
 func New(dir, addr, port string) *WhiteBox {
@@ -257,7 +271,7 @@ func (wb *WhiteBox) Recv(address string, port uint16) {
 
 func (wb *WhiteBox) setStatus(message string) {
 	status := Status{
-		Priority: "low",
+		Priority: TONE_LOW,
 		Message:  message,
 	}
 	wb.StatusChannel <- status
@@ -265,7 +279,7 @@ func (wb *WhiteBox) setStatus(message string) {
 
 func (wb *WhiteBox) chatStatus(message string) {
 	status := Status{
-		Priority: "high",
+		Priority: TONE_HIGH,
 		Message:  message,
 	}
 	wb.StatusChannel <- status
