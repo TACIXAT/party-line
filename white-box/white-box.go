@@ -69,6 +69,7 @@ func New(dir, addr, port string) *WhiteBox {
 	wb.InitTable(wb.Self.SignPub)
 
 	wb.BsId = fmt.Sprintf("%s/%s/%s", addr, port, wb.PeerSelf.ShortId())
+	wb.EmptyList = true
 	wb.Parties = make(map[string]*PartyLine)
 	wb.PendingInvites = make(map[string]*PartyLine)
 	wb.PeerCache = make(map[string]PeerCache)

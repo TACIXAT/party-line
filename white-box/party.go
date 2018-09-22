@@ -1278,6 +1278,7 @@ func (wb *WhiteBox) PartyStart(name string) string {
 	party.MinList = make(map[string]int)
 	party.SeenChats = make(map[string]bool)
 	party.Packs = make(map[string]*Pack)
+	party.WhiteBox = wb
 
 	party.MinList[party.WhiteBox.PeerSelf.Id()] = 0
 

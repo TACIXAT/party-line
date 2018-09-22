@@ -12,8 +12,8 @@ import (
 
 /*
 TODO:
+	test file transfer
 	test dropped pack name in receiving file structure
-	unthrottle fulfillments
 
 	scrolling
 	cursor on input
@@ -32,9 +32,6 @@ TODO:
 	use releases
 	bs shortener
 	perm nodes
-
-	CONV TODO:
-		no peer connected message
 */
 
 var chatChan chan string

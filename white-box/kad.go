@@ -171,6 +171,8 @@ func (wb *WhiteBox) addPeer(peer *Peer) {
 		wb.PeerTable[idx].InsertAfter(insertEntry, curr)
 	}
 
+	log.Println("peer added")
+
 	if wb.EmptyList {
 		wb.chatStatus("peer added, happy chatting!")
 		wb.EmptyList = false
