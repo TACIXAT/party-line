@@ -35,6 +35,7 @@ TODO:
 
 	CONV TODO:
 		status receiver go routine
+		chat receiver go routine
 */
 
 var chatChan chan string

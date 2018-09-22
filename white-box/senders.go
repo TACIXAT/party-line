@@ -42,7 +42,7 @@ func (wb *WhiteBox) route(env *Envelope) {
 	selfDist.SetBytes(wb.PeerSelf.SignPub)
 	selfDist.Xor(selfDist, idInt)
 
-	closest := findClosestN(bytesId, 3)
+	closest := wb.findClosestN(bytesId, 3)
 	for _, peerEntry := range closest {
 		peer := peerEntry.Peer
 		if peer != nil {
@@ -65,7 +65,7 @@ func (wb *WhiteBox) flood(env *Envelope) {
 	}
 
 	sentPeers := make(map[string]bool)
-	for _, list := range peerTable {
+	for _, list := range wb.PeerTable {
 		for curr := list.Front(); curr != nil; curr = curr.Next() {
 			currEntry := curr.Value.(*PeerEntry)
 			currPeer := currEntry.Peer
@@ -133,7 +133,7 @@ func (wb *WhiteBox) sendSuggestions(peer *Peer, requestData []byte) {
 	peerSet := make([]Peer, 0)
 	peerSet = append(peerSet)
 	for _, idInt := range peerIdealTable {
-		closestPeerEntry := findClosest(idInt.Bytes())
+		closestPeerEntry := wb.findClosest(idInt.Bytes())
 		if closestPeerEntry == nil {
 			continue
 		}
@@ -253,7 +253,7 @@ func (wb *WhiteBox) SendChat(msg string) {
 	}
 
 	sendPeers := make(map[string]*Peer)
-	for _, list := range peerTable {
+	for _, list := range wb.PeerTable {
 		curr := list.Front()
 		if curr == nil {
 			continue
@@ -360,7 +360,7 @@ func (wb *WhiteBox) SendPings() {
 
 		peerSeen := make(map[string]bool)
 		for i := 0; i < 256; i++ {
-			bucketList := peerTable[i]
+			bucketList := wb.PeerTable[i]
 			for curr := bucketList.Front(); curr != nil; curr = curr.Next() {
 				entry := curr.Value.(*PeerEntry)
 				if entry.Peer != nil {

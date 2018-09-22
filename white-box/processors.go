@@ -312,7 +312,7 @@ func (wb *WhiteBox) processSuggestions(env *Envelope) {
 
 	for _, newPeer := range suggestions.SuggestedPeers {
 		cache, seen := wb.PeerCache[newPeer.Id()]
-		if !seen && !cache.Added && wouldAddPeer(&newPeer) {
+		if !seen && !cache.Added && wb.wouldAddPeer(&newPeer) {
 			peerConn, err := net.Dial("udp", newPeer.Address)
 			if err != nil {
 				log.Println(err)
@@ -413,5 +413,5 @@ func (wb *WhiteBox) processPulse(env *Envelope) {
 		return
 	}
 
-	refreshPeer(idShort)
+	wb.refreshPeer(idShort)
 }

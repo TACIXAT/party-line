@@ -30,8 +30,8 @@ func (wb *WhiteBox) InitTable(idBytes []byte) {
 
 	for i := 0; i < 256; i++ {
 		peerDist := new(big.Int)
-		peerDist.Xor(idealPeerIds[i], idInt)
-		peerTable[i] = list.New()
+		peerDist.Xor(wb.IdealPeerIds[i], idInt)
+		wb.PeerTable[i] = list.New()
 	}
 }
 
@@ -55,7 +55,7 @@ func calculateIdealTable(idBytes []byte) [256]*big.Int {
 }
 
 func (wb *WhiteBox) CalculateIdealTableSelf(idBytes []byte) {
-	idealPeerIds = calculateIdealTable(idBytes)
+	wb.IdealPeerIds = calculateIdealTable(idBytes)
 }
 
 func (wb *WhiteBox) removePeer(peerId string) {
@@ -68,10 +68,10 @@ func (wb *WhiteBox) removePeer(peerId string) {
 
 	intId := new(big.Int)
 	intId.SetBytes(bytesId)
-	idx := closestIndex(intId)
+	idx := wb.closestIndex(intId)
 
 	removeList := make([]*list.Element, 0)
-	for curr := peerTable[idx].Front(); curr != nil; curr = curr.Next() {
+	for curr := wb.PeerTable[idx].Front(); curr != nil; curr = curr.Next() {
 		entry := curr.Value.(*PeerEntry)
 		if bytes.Compare(entry.Id, bytesId) == 0 {
 			removeList = append(removeList, curr)
@@ -79,12 +79,12 @@ func (wb *WhiteBox) removePeer(peerId string) {
 	}
 
 	for _, element := range removeList {
-		peerTable[idx].Remove(element)
+		wb.PeerTable[idx].Remove(element)
 	}
 
-	if !emptyList && !havePeers() {
+	if !wb.EmptyList && !wb.havePeers() {
 		wb.chatStatus("all friends gone, bootstrap some new ones")
-		emptyList = true
+		wb.EmptyList = true
 	}
 }
 
@@ -92,7 +92,7 @@ func (wb *WhiteBox) removeStalePeers() {
 	removed := false
 	for i := 0; i < 256; i++ {
 		removeList := make([]*list.Element, 0)
-		for curr := peerTable[i].Front(); curr != nil; curr = curr.Next() {
+		for curr := wb.PeerTable[i].Front(); curr != nil; curr = curr.Next() {
 			entry := curr.Value.(*PeerEntry)
 			if entry.Peer != nil && time.Now().Sub(entry.Seen) > 60*time.Second {
 				removeList = append(removeList, curr)
@@ -101,24 +101,24 @@ func (wb *WhiteBox) removeStalePeers() {
 
 		for _, element := range removeList {
 			wb.setStatus("removed stale peer")
-			peerTable[i].Remove(element)
+			wb.PeerTable[i].Remove(element)
 			removed = true
 		}
 	}
 
-	if removed && !havePeers() && !emptyList {
+	if removed && !wb.havePeers() && !wb.EmptyList {
 		wb.chatStatus("all friends gone, bootstrap some new ones")
-		emptyList = true
+		wb.EmptyList = true
 	}
 }
 
-func havePeers() bool {
+func (wb *WhiteBox) havePeers() bool {
 	for i := 0; i < 256; i++ {
-		if peerTable[i].Len() > 1 {
+		if wb.PeerTable[i].Len() > 1 {
 			return true
 		}
 
-		element := peerTable[i].Front()
+		element := wb.PeerTable[i].Front()
 		if element != nil {
 			entry := element.Value.(*PeerEntry)
 			if entry.Peer != nil {
@@ -148,11 +148,11 @@ func (wb *WhiteBox) addPeer(peer *Peer) {
 	insertId := new(big.Int)
 	insertId.SetBytes(idBytes)
 
-	idx := closestIndex(insertId)
-	peerList := peerTable[idx]
+	idx := wb.closestIndex(insertId)
+	peerList := wb.PeerTable[idx]
 
 	insertDist := new(big.Int)
-	insertDist.Xor(idealPeerIds[idx], insertId)
+	insertDist.Xor(wb.IdealPeerIds[idx], insertId)
 
 	insertEntry := new(PeerEntry)
 	insertEntry.Id = idBytes
@@ -166,32 +166,32 @@ func (wb *WhiteBox) addPeer(peer *Peer) {
 	}
 
 	if curr == nil {
-		peerTable[idx].PushFront(insertEntry)
+		wb.PeerTable[idx].PushFront(insertEntry)
 	} else {
-		peerTable[idx].InsertAfter(insertEntry, curr)
+		wb.PeerTable[idx].InsertAfter(insertEntry, curr)
 	}
 
-	if emptyList {
+	if wb.EmptyList {
 		wb.chatStatus("peer added, happy chatting!")
-		emptyList = false
+		wb.EmptyList = false
 	}
 }
 
-func wouldAddPeer(peer *Peer) bool {
+func (wb *WhiteBox) wouldAddPeer(peer *Peer) bool {
 	idBytes := peer.SignPub
 	insertId := new(big.Int)
 	insertId.SetBytes(idBytes)
 
-	idx := closestIndex(insertId)
+	idx := wb.closestIndex(insertId)
 
 	insertDist := new(big.Int)
-	insertDist.Xor(idealPeerIds[idx], insertId)
+	insertDist.Xor(wb.IdealPeerIds[idx], insertId)
 
-	if peerTable[idx].Len() < 20 {
+	if wb.PeerTable[idx].Len() < 20 {
 		return true
 	}
 
-	last := peerTable[idx].Back()
+	last := wb.PeerTable[idx].Back()
 	lastPeerEntry := last.Value.(*PeerEntry)
 	if insertDist.Cmp(lastPeerEntry.Distance) < 0 {
 		return true
@@ -200,13 +200,13 @@ func wouldAddPeer(peer *Peer) bool {
 	return false
 }
 
-func closestIndex(idInt *big.Int) int {
+func (wb *WhiteBox) closestIndex(idInt *big.Int) int {
 	// find lowest of ideal table
 	lowestIdealDist := new(big.Int)
 	lowestIdealIdx := 0
 	for i := 0; i < 256; i++ {
 		dist := new(big.Int)
-		dist.Xor(idealPeerIds[i], idInt)
+		dist.Xor(wb.IdealPeerIds[i], idInt)
 
 		if i == 0 {
 			lowestIdealDist = dist
@@ -222,17 +222,17 @@ func closestIndex(idInt *big.Int) int {
 	return lowestIdealIdx
 }
 
-func findClosestN(idBytes []byte, n int) []*PeerEntry {
+func (wb *WhiteBox) findClosestN(idBytes []byte, n int) []*PeerEntry {
 	idInt := new(big.Int)
 	idInt.SetBytes(idBytes)
 
-	closestIdx := closestIndex(idInt)
+	closestIdx := wb.closestIndex(idInt)
 
 	closest := make([]*PeerEntry, 0)
 	dists := make([]*big.Int, 0)
 
 	// find lowest entry in bucket
-	peerList := peerTable[closestIdx]
+	peerList := wb.PeerTable[closestIdx]
 	for curr := peerList.Front(); curr != nil; curr = curr.Next() {
 		entry := curr.Value.(*PeerEntry)
 		entryDist := new(big.Int)
@@ -256,8 +256,8 @@ func findClosestN(idBytes []byte, n int) []*PeerEntry {
 	return closest
 }
 
-func findClosest(idBytes []byte) *PeerEntry {
-	closest := findClosestN(idBytes, 1)
+func (wb *WhiteBox) findClosest(idBytes []byte) *PeerEntry {
+	closest := wb.findClosestN(idBytes, 1)
 
 	if len(closest) == 0 {
 		return nil
@@ -266,7 +266,7 @@ func findClosest(idBytes []byte) *PeerEntry {
 	return closest[0]
 }
 
-func refreshPeer(peerId string) {
+func (wb *WhiteBox) refreshPeer(peerId string) {
 	bytesId, err := hex.DecodeString(peerId)
 	if err != nil {
 		log.Println(err)
@@ -274,7 +274,7 @@ func refreshPeer(peerId string) {
 	}
 
 	for i := 0; i < 256; i++ {
-		for curr := peerTable[i].Front(); curr != nil; curr = curr.Next() {
+		for curr := wb.PeerTable[i].Front(); curr != nil; curr = curr.Next() {
 			entry := curr.Value.(*PeerEntry)
 			if bytes.Compare(entry.Id, bytesId) == 0 {
 				entry.Seen = time.Now()

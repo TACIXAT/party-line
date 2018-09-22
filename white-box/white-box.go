@@ -23,10 +23,6 @@ type Status struct {
 	Message  string
 }
 
-var peerTable [256]*list.List
-var idealPeerIds [256]*big.Int
-var emptyList bool = true
-
 type WhiteBox struct {
 	BsId           string
 	ChatChannel    chan partylib.Chat
@@ -35,6 +31,7 @@ type WhiteBox struct {
 	PeerSelf       Peer
 	PeerTable      [256]*list.List
 	IdealPeerIds   [256]*big.Int
+	EmptyList      bool
 	SeenChats      map[string]bool
 	Parties        map[string]*PartyLine
 	PendingInvites map[string]*PartyLine
