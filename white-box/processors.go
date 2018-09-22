@@ -69,8 +69,9 @@ func (wb *WhiteBox) processMessage(strMsg string) {
 	// chatStatus(fmt.Sprintf("got %s", env.Type))
 }
 
-func verifyEnvelope(env *Envelope, caller string) ([]byte, error) {
-	min, err := idToMin(env.From)
+// TODO: lib candidate
+func (wb *WhiteBox) verifyEnvelope(env *Envelope, caller string) ([]byte, error) {
+	min, err := wb.IdToMin(env.From)
 	if err != nil {
 		log.Println(err)
 		return nil, errors.New(fmt.Sprintf("error bad id (%s:from)", caller))
@@ -88,7 +89,7 @@ func verifyEnvelope(env *Envelope, caller string) ([]byte, error) {
 }
 
 func (wb *WhiteBox) processChat(env *Envelope) {
-	jsonData, err := verifyEnvelope(env, "chat")
+	jsonData, err := wb.verifyEnvelope(env, "chat")
 	if err != nil {
 		wb.setStatus(err.Error())
 		return
@@ -121,11 +122,11 @@ func (wb *WhiteBox) processChat(env *Envelope) {
 		wb.SeenChats[uniqueId] = true
 	}
 
-	cacheMin(msgChat.Min)
+	wb.cacheMin(msgChat.Min)
 }
 
 func (wb *WhiteBox) processBootstrap(env *Envelope) {
-	jsonData, err := verifyEnvelope(env, "bs")
+	jsonData, err := wb.verifyEnvelope(env, "bs")
 	if err != nil {
 		wb.setStatus(err.Error())
 		return
@@ -158,7 +159,7 @@ func (wb *WhiteBox) processBootstrap(env *Envelope) {
 }
 
 func (wb *WhiteBox) processVerify(env *Envelope) {
-	jsonData, err := verifyEnvelope(env, "bsverify")
+	jsonData, err := wb.verifyEnvelope(env, "bsverify")
 	if err != nil {
 		wb.setStatus(err.Error())
 		return
@@ -192,7 +193,7 @@ func (wb *WhiteBox) processVerify(env *Envelope) {
 }
 
 func (wb *WhiteBox) processAnnounce(env *Envelope) {
-	jsonData, err := verifyEnvelope(env, "announce")
+	jsonData, err := wb.verifyEnvelope(env, "announce")
 	if err != nil {
 		wb.setStatus(err.Error())
 		return
@@ -210,7 +211,7 @@ func (wb *WhiteBox) processAnnounce(env *Envelope) {
 		return
 	}
 
-	cache, seen := peerCache[peer.Id()]
+	cache, seen := wb.PeerCache[peer.Id()]
 	if !seen || !cache.Added {
 		peerConn, err := net.Dial("udp", peer.Address)
 		if err != nil {
@@ -225,14 +226,14 @@ func (wb *WhiteBox) processAnnounce(env *Envelope) {
 
 	if !seen || !cache.Announced {
 		wb.flood(env)
-		cache = peerCache[peer.Id()]
+		cache = wb.PeerCache[peer.Id()]
 		cache.Announced = true
-		peerCache[peer.Id()] = cache
+		wb.PeerCache[peer.Id()] = cache
 	}
 }
 
 func (wb *WhiteBox) processSuggestionRequest(env *Envelope) {
-	jsonData, err := verifyEnvelope(env, "request")
+	jsonData, err := wb.verifyEnvelope(env, "request")
 	if err != nil {
 		wb.setStatus(err.Error())
 		return
@@ -265,14 +266,14 @@ func (wb *WhiteBox) processSuggestionRequest(env *Envelope) {
 
 	wb.sendSuggestions(peer, env.Data)
 
-	cache, seen := peerCache[peer.Id()]
+	cache, seen := wb.PeerCache[peer.Id()]
 	if !seen || !cache.Added {
 		wb.addPeer(peer)
 	}
 }
 
 func (wb *WhiteBox) processSuggestions(env *Envelope) {
-	jsonData, err := verifyEnvelope(env, "suggestions")
+	jsonData, err := wb.verifyEnvelope(env, "suggestions")
 	if err != nil {
 		wb.setStatus(err.Error())
 		return
@@ -296,7 +297,7 @@ func (wb *WhiteBox) processSuggestions(env *Envelope) {
 	peer := new(Peer)
 	*peer = suggestions.Peer
 
-	cache, seen := peerCache[peer.Id()]
+	cache, seen := wb.PeerCache[peer.Id()]
 	if !seen || !cache.Added {
 		peerConn, err := net.Dial("udp", peer.Address)
 		if err != nil {
@@ -310,7 +311,7 @@ func (wb *WhiteBox) processSuggestions(env *Envelope) {
 	}
 
 	for _, newPeer := range suggestions.SuggestedPeers {
-		cache, seen := peerCache[newPeer.Id()]
+		cache, seen := wb.PeerCache[newPeer.Id()]
 		if !seen && !cache.Added && wouldAddPeer(&newPeer) {
 			peerConn, err := net.Dial("udp", newPeer.Address)
 			if err != nil {
@@ -326,7 +327,7 @@ func (wb *WhiteBox) processSuggestions(env *Envelope) {
 }
 
 func (wb *WhiteBox) processDisconnect(env *Envelope) {
-	jsonData, err := verifyEnvelope(env, "disconnect")
+	jsonData, err := wb.verifyEnvelope(env, "disconnect")
 	if err != nil {
 		wb.setStatus(err.Error())
 		return
@@ -345,7 +346,7 @@ func (wb *WhiteBox) processDisconnect(env *Envelope) {
 		return
 	}
 
-	idShort, err := wb.idFront(env.From)
+	idShort, err := wb.IdFront(env.From)
 	if err != nil {
 		wb.setStatus("error bad id (disconnect)")
 		return
@@ -353,17 +354,17 @@ func (wb *WhiteBox) processDisconnect(env *Envelope) {
 
 	wb.removePeer(idShort)
 
-	cache, seen := peerCache[env.From]
+	cache, seen := wb.PeerCache[env.From]
 	if !seen || !cache.Disconnected {
 		cache.Disconnected = true
-		peerCache[env.From] = cache
+		wb.PeerCache[env.From] = cache
 
 		wb.flood(env)
 	}
 }
 
 func (wb *WhiteBox) processPing(env *Envelope) {
-	jsonData, err := verifyEnvelope(env, "ping")
+	jsonData, err := wb.verifyEnvelope(env, "ping")
 	if err != nil {
 		wb.setStatus(err.Error())
 		return
@@ -387,7 +388,7 @@ func (wb *WhiteBox) processPing(env *Envelope) {
 }
 
 func (wb *WhiteBox) processPulse(env *Envelope) {
-	jsonData, err := verifyEnvelope(env, "pulse")
+	jsonData, err := wb.verifyEnvelope(env, "pulse")
 	if err != nil {
 		wb.setStatus(err.Error())
 		return
@@ -406,7 +407,7 @@ func (wb *WhiteBox) processPulse(env *Envelope) {
 		return
 	}
 
-	idShort, err := wb.idFront(env.From)
+	idShort, err := wb.IdFront(env.From)
 	if err != nil {
 		wb.setStatus("error bad id (disconnect)")
 		return

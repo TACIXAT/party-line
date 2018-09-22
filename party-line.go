@@ -19,7 +19,6 @@ TODO:
 	cursor on input
 	better keys
 	sent scrollback
-	bs shortener
 	name color
 	mute user
 	more statuses
@@ -29,6 +28,10 @@ TODO:
 
 	measure block packet size
 	increase block size
+
+	use releases
+	bs shortener
+	perm nodes
 
 	CONV TODO:
 		status receiver go routine

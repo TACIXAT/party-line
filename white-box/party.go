@@ -21,14 +21,12 @@ import (
 	"time"
 )
 
-var pending map[string]*PartyLine
 var freshRequests map[string]*Since
 var requestChan chan *PartyRequest
 var verifiedBlockChan chan *VerifiedBlock
 
 func init() {
 	mrand.Seed(time.Now().UTC().UnixNano())
-	pending = make(map[string]*PartyLine)
 	freshRequests = make(map[string]*Since)
 	requestChan = make(chan *PartyRequest, 100)
 	verifiedBlockChan = make(chan *VerifiedBlock, 100)
@@ -208,7 +206,7 @@ func (party *PartyLine) SendAnnounce() {
 	}
 
 	for idMin, _ := range party.MinList {
-		min, err := idToMin(idMin)
+		min, err := party.WhiteBox.IdToMin(idMin)
 		if err != nil {
 			party.WhiteBox.setStatus(err.Error())
 			continue
@@ -245,7 +243,7 @@ func (party *PartyLine) sendToNeighbors(
 
 	neighbors := party.getNeighbors()
 	for idMin, _ := range neighbors {
-		min, err := idToMin(idMin)
+		min, err := party.WhiteBox.IdToMin(idMin)
 		if err != nil {
 			party.WhiteBox.setStatus(err.Error())
 			continue
@@ -335,7 +333,7 @@ func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
 		return
 	}
 
-	min, err := idToMin(partyAdvertisement.PeerId)
+	min, err := party.WhiteBox.IdToMin(partyAdvertisement.PeerId)
 	if err != nil {
 		party.WhiteBox.setStatus("error bad id (party:ad)")
 		return
@@ -399,7 +397,7 @@ func (party *PartyLine) ProcessChat(partyEnv *PartyEnvelope) {
 		return
 	}
 
-	min, err := idToMin(partyChat.PeerId)
+	min, err := party.WhiteBox.IdToMin(partyChat.PeerId)
 	if err != nil {
 		party.WhiteBox.setStatus("error bad id (party:chat)")
 		return
@@ -446,7 +444,7 @@ func (party *PartyLine) ProcessDisconnect(partyEnv *PartyEnvelope) {
 		return
 	}
 
-	min, err := idToMin(partyDisconnect.PeerId)
+	min, err := party.WhiteBox.IdToMin(partyDisconnect.PeerId)
 	if err != nil {
 		party.WhiteBox.setStatus("error bad id (party:disconnect)")
 		return
@@ -490,7 +488,7 @@ func (party *PartyLine) ProcessAnnounce(partyEnv *PartyEnvelope) {
 		return
 	}
 
-	min, err := idToMin(partyAnnounce.PeerId)
+	min, err := party.WhiteBox.IdToMin(partyAnnounce.PeerId)
 	if err != nil {
 		party.WhiteBox.setStatus("error bad id (party:announce)")
 		return
@@ -512,7 +510,7 @@ func (party *PartyLine) ProcessAnnounce(partyEnv *PartyEnvelope) {
 }
 
 func (wb *WhiteBox) processParty(env *Envelope) {
-	min, err := idToMin(env.From)
+	min, err := wb.IdToMin(env.From)
 	if err != nil {
 		wb.setStatus(err.Error())
 		return
@@ -564,7 +562,7 @@ func (wb *WhiteBox) processParty(env *Envelope) {
 }
 
 func (wb *WhiteBox) processInvite(env *Envelope) {
-	min, err := idToMin(env.From)
+	min, err := wb.IdToMin(env.From)
 	if err != nil {
 		wb.setStatus(err.Error())
 		return
@@ -595,7 +593,7 @@ func (wb *WhiteBox) processInvite(env *Envelope) {
 	party.SeenChats = make(map[string]bool)
 	party.Packs = make(map[string]*Pack)
 
-	_, inPending := pending[party.Id]
+	_, inPending := wb.PendingInvites[party.Id]
 	_, inParties := wb.Parties[party.Id]
 
 	if inPending || inParties {
@@ -603,12 +601,12 @@ func (wb *WhiteBox) processInvite(env *Envelope) {
 		return
 	}
 
-	pending[party.Id] = party
+	wb.PendingInvites[party.Id] = party
 	party.WhiteBox.setStatus(fmt.Sprintf("invite received for %s", party.Id))
 }
 
 func (wb *WhiteBox) AcceptInvite(partyId string) {
-	party := pending[partyId]
+	party := wb.PendingInvites[partyId]
 
 	if _, joined := wb.Parties[partyId]; joined {
 		party.WhiteBox.setStatus("error already joined party with id")
@@ -616,7 +614,7 @@ func (wb *WhiteBox) AcceptInvite(partyId string) {
 		return
 	}
 
-	delete(pending, partyId)
+	delete(wb.PendingInvites, partyId)
 	party.SendAnnounce()
 	wb.Parties[party.Id] = party
 	party.WhiteBox.setStatus(fmt.Sprintf("accepted invite %s", party.Id))
@@ -698,7 +696,7 @@ func (party *PartyLine) ProcessRequest(partyEnv *PartyEnvelope) {
 		return
 	}
 
-	min, err := idToMin(partyRequest.PeerId)
+	min, err := party.WhiteBox.IdToMin(partyRequest.PeerId)
 	if err != nil {
 		party.WhiteBox.setStatus("error bad id (party:request)")
 		return
@@ -828,7 +826,7 @@ func (party *PartyLine) SendFulfillment(request *PartyRequest, block *Block) {
 		return
 	}
 
-	min, err := idToMin(request.PeerId)
+	min, err := party.WhiteBox.IdToMin(request.PeerId)
 	if err != nil {
 		party.WhiteBox.setStatus(err.Error())
 		return
@@ -861,7 +859,7 @@ func (party *PartyLine) ProcessFulfillment(partyEnv *PartyEnvelope) {
 		return
 	}
 
-	min, err := idToMin(partyFulfillment.PeerId)
+	min, err := party.WhiteBox.IdToMin(partyFulfillment.PeerId)
 	if err != nil {
 		party.WhiteBox.setStatus("error bad id (party:fulfillment)")
 		return
@@ -1267,7 +1265,7 @@ func minimum(a, b int) int {
 	return b
 }
 
-func (wb *WhiteBox) partyStart(name string) string {
+func (wb *WhiteBox) PartyStart(name string) string {
 	idBytes := make([]byte, 16)
 	rand.Read(idBytes)
 

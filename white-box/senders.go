@@ -23,7 +23,7 @@ func (wb *WhiteBox) route(env *Envelope) {
 		return
 	}
 
-	shortId, err := wb.idFront(env.To)
+	shortId, err := wb.IdFront(env.To)
 	if err != nil {
 		log.Println(err)
 		return

@@ -202,13 +202,13 @@ func chatDrawer(messageBox *termui.Par) {
 }
 
 // create channel
-func handleStart(toks []string) {
+func handleStart(wb *whitebox.WhiteBox, toks []string) {
 	if len(toks) < 2 {
 		setStatus("error insufficient args to create command")
 		return
 	}
 
-	id := partyStart(toks[1])
+	id := wb.PartyStart(toks[1])
 	if id != "" {
 		setStatus(fmt.Sprintf("party started %s", id))
 	}
@@ -244,8 +244,8 @@ func handleInvite(wb *whitebox.WhiteBox, toks []string) {
 
 	// iterate peers
 	var min *whitebox.MinPeer
-	for id, _ := range peerCache {
-		front, err := idFront(id)
+	for id, _ := range wb.PeerCache {
+		front, err := wb.IdFront(id)
 		if err != nil {
 			setStatus("error decoding peer id")
 			log.Println(err)
@@ -259,7 +259,7 @@ func handleInvite(wb *whitebox.WhiteBox, toks []string) {
 				return
 			}
 
-			min, err = idToMin(id)
+			min, err = wb.IdToMin(id)
 			if err != nil {
 				setStatus("error decoding peer")
 				log.Println(err)
@@ -400,8 +400,8 @@ func handleList(wb *whitebox.WhiteBox, toks []string) {
 
 	if show == "both" || show == "parties" {
 		chatStatus("  ==== ACCEPTANCE PENDING ====  ")
-		if len(pending) > 0 {
-			for id, _ := range pending {
+		if len(wb.PendingInvites) > 0 {
+			for id, _ := range wb.PendingInvites {
 				chatStatus(fmt.Sprintf("%s", id))
 			}
 		} else {
@@ -420,7 +420,7 @@ func handleAccept(wb *whitebox.WhiteBox, toks []string) {
 
 	// iterate pending
 	partyId := ""
-	for id, _ := range pending {
+	for id, _ := range wb.PendingInvites {
 		if strings.HasPrefix(id, partyPrefix) {
 			if partyId != "" {
 				setStatus(fmt.Sprintf(
@@ -587,7 +587,7 @@ func handleUserInput(wb *whitebox.WhiteBox, buf string) {
 	case "/bs":
 		handleBootstrap(wb, toks)
 	case "/start":
-		handleStart(toks)
+		handleStart(wb, toks)
 	case "/invite":
 		handleInvite(wb, toks)
 	case "/accept":

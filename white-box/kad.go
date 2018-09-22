@@ -11,11 +11,6 @@ import (
 	"time"
 )
 
-var peerTable [256]*list.List
-var idealPeerIds [256]*big.Int
-var peerCache map[string]PeerCache
-var emptyList bool = true
-
 type PeerEntry struct {
 	Id       sign.PublicKey
 	Distance *big.Int
@@ -27,10 +22,6 @@ type PeerCache struct {
 	Added        bool
 	Announced    bool
 	Disconnected bool
-}
-
-func init() {
-	peerCache = make(map[string]PeerCache)
 }
 
 func (wb *WhiteBox) InitTable(idBytes []byte) {
@@ -139,19 +130,19 @@ func havePeers() bool {
 	return false
 }
 
-func cacheMin(min MinPeer) {
-	cache := peerCache[min.Id()]
-	peerCache[min.Id()] = cache
+func (wb *WhiteBox) cacheMin(min MinPeer) {
+	cache := wb.PeerCache[min.Id()]
+	wb.PeerCache[min.Id()] = cache
 }
 
 func (wb *WhiteBox) addPeer(peer *Peer) {
-	cache, seen := peerCache[peer.Id()]
+	cache, seen := wb.PeerCache[peer.Id()]
 	if seen && cache.Added {
 		return
 	}
 
 	cache.Added = true
-	peerCache[peer.Id()] = cache
+	wb.PeerCache[peer.Id()] = cache
 
 	idBytes := peer.SignPub
 	insertId := new(big.Int)

@@ -23,16 +23,22 @@ type Status struct {
 	Message  string
 }
 
+var peerTable [256]*list.List
+var idealPeerIds [256]*big.Int
+var emptyList bool = true
+
 type WhiteBox struct {
-	BsId          string
-	ChatChannel   chan partylib.Chat
-	StatusChannel chan Status
-	Self          Self
-	PeerSelf      Peer
-	PeerTable     [256]*list.List
-	IdealPeerIds  [256]*big.Int
-	SeenChats     map[string]bool
-	Parties       map[string]*PartyLine
+	BsId           string
+	ChatChannel    chan partylib.Chat
+	StatusChannel  chan Status
+	Self           Self
+	PeerSelf       Peer
+	PeerTable      [256]*list.List
+	IdealPeerIds   [256]*big.Int
+	SeenChats      map[string]bool
+	Parties        map[string]*PartyLine
+	PendingInvites map[string]*PartyLine
+	PeerCache      map[string]PeerCache
 }
 
 func New(dir, addr, port string) *WhiteBox {
@@ -48,6 +54,8 @@ func New(dir, addr, port string) *WhiteBox {
 
 	wb.BsId = fmt.Sprintf("%s/%s/%s", addr, port, wb.PeerSelf.ShortId())
 	wb.Parties = make(map[string]*PartyLine)
+	wb.PendingInvites = make(map[string]*PartyLine)
+	wb.PeerCache = make(map[string]PeerCache)
 
 	log.Println(wb.BsId)
 	wb.chatStatus(wb.BsId)
@@ -139,8 +147,8 @@ type MessagePing struct {
 	Time        time.Time
 }
 
-func (wb *WhiteBox) idFront(id string) (string, error) {
-	min, err := idToMin(id)
+func (wb *WhiteBox) IdFront(id string) (string, error) {
+	min, err := wb.IdToMin(id)
 	if err != nil {
 		wb.setStatus(err.Error())
 		return "", err
@@ -149,8 +157,8 @@ func (wb *WhiteBox) idFront(id string) (string, error) {
 	return hex.EncodeToString(min.SignPub[:]), nil
 }
 
-func (wb *WhiteBox) idBack(id string) (string, error) {
-	min, err := idToMin(id)
+func (wb *WhiteBox) IdBack(id string) (string, error) {
+	min, err := wb.IdToMin(id)
 	if err != nil {
 		wb.setStatus(err.Error())
 		return "", err
@@ -159,7 +167,8 @@ func (wb *WhiteBox) idBack(id string) (string, error) {
 	return hex.EncodeToString(min.EncPub[:]), nil
 }
 
-func idToMin(id string) (*MinPeer, error) {
+// TODO: lib candidate
+func (wb *WhiteBox) IdToMin(id string) (*MinPeer, error) {
 	pubs := strings.Split(id, ".")
 	if len(pubs) != 2 {
 		return nil, errors.New("error invalid id (min)")
