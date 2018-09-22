@@ -24,18 +24,23 @@ type Status struct {
 }
 
 type WhiteBox struct {
-	BsId           string
-	ChatChannel    chan partylib.Chat
-	StatusChannel  chan Status
-	Self           Self
-	PeerSelf       Peer
-	PeerTable      [256]*list.List
-	IdealPeerIds   [256]*big.Int
-	EmptyList      bool
-	SeenChats      map[string]bool
-	Parties        map[string]*PartyLine
-	PendingInvites map[string]*PartyLine
-	PeerCache      map[string]PeerCache
+	BsId              string
+	ChatChannel       chan partylib.Chat
+	StatusChannel     chan Status
+	Self              Self
+	PeerSelf          Peer
+	PeerTable         [256]*list.List
+	IdealPeerIds      [256]*big.Int
+	EmptyList         bool
+	SeenChats         map[string]bool
+	Parties           map[string]*PartyLine
+	PendingInvites    map[string]*PartyLine
+	PeerCache         map[string]PeerCache
+	SharedDir         string
+	FreshRequests     map[string]*Since
+	RequestChan       chan *PartyRequest
+	VerifiedBlockChan chan *VerifiedBlock
+	NoReroute         map[time.Time]bool
 }
 
 func New(dir, addr, port string) *WhiteBox {
@@ -53,6 +58,11 @@ func New(dir, addr, port string) *WhiteBox {
 	wb.Parties = make(map[string]*PartyLine)
 	wb.PendingInvites = make(map[string]*PartyLine)
 	wb.PeerCache = make(map[string]PeerCache)
+
+	wb.FreshRequests = make(map[string]*Since)
+	wb.RequestChan = make(chan *PartyRequest, 100)
+	wb.VerifiedBlockChan = make(chan *VerifiedBlock, 100)
+	wb.NoReroute = make(map[time.Time]bool)
 
 	log.Println(wb.BsId)
 	wb.chatStatus(wb.BsId)

@@ -182,9 +182,6 @@ func buildBlockLookup(
 	return blockLookup
 }
 
-var sharedDir string
-var fileMod map[string]time.Time
-
 const BUFFER_SIZE = 10240
 
 func (wb *WhiteBox) InitFiles(dir string) {
@@ -193,17 +190,15 @@ func (wb *WhiteBox) InitFiles(dir string) {
 		if err != nil {
 			log.Fatal("could not get home dir")
 		}
-		sharedDir = filepath.Join(home, "party-line")
+		wb.SharedDir = filepath.Join(home, "party-line")
 	} else {
-		sharedDir = dir
+		wb.SharedDir = dir
 	}
 
-	err := os.MkdirAll(sharedDir, 0700)
+	err := os.MkdirAll(wb.SharedDir, 0700)
 	if err != nil {
 		log.Fatal("could not create shared dir")
 	}
-
-	fileMod = make(map[string]time.Time)
 }
 
 type ByFileName []*PackFileInfo
@@ -487,7 +482,7 @@ func fullCoverage(size int64) []uint64 {
 }
 
 func (wb *WhiteBox) buildPack(partyId string, path string, targetFile *os.File) {
-	partyDir := filepath.Join(sharedDir, partyId)
+	partyDir := filepath.Join(wb.SharedDir, partyId)
 	partyDirAbs, err := filepath.Abs(partyDir)
 	if err != nil {
 		log.Println(err)
@@ -495,7 +490,7 @@ func (wb *WhiteBox) buildPack(partyId string, path string, targetFile *os.File) 
 		return
 	}
 
-	if !strings.HasPrefix(partyDirAbs, sharedDir) {
+	if !strings.HasPrefix(partyDirAbs, wb.SharedDir) {
 		wb.setStatus("error party dir traverses directories")
 		return
 	}
@@ -592,7 +587,7 @@ func (wb *WhiteBox) walker(path string, info os.FileInfo, err error) error {
 		return err
 	}
 
-	relPath := path[len(sharedDir):]
+	relPath := path[len(wb.SharedDir):]
 	relPath = strings.TrimLeft(relPath, "/")
 	toks := strings.Split(relPath, "/")
 	if len(toks) < 1 {
@@ -623,7 +618,7 @@ func (wb *WhiteBox) RescanPacks() {
 	// check for new and changed packs
 	for partyId, party := range wb.Parties {
 		party.ClearPacks()
-		targetDir := filepath.Join(sharedDir, partyId)
+		targetDir := filepath.Join(wb.SharedDir, partyId)
 
 		_, err := os.Stat(targetDir)
 		if err != nil {

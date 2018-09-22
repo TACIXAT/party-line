@@ -21,15 +21,8 @@ import (
 	"time"
 )
 
-var freshRequests map[string]*Since
-var requestChan chan *PartyRequest
-var verifiedBlockChan chan *VerifiedBlock
-
 func init() {
 	mrand.Seed(time.Now().UTC().UnixNano())
-	freshRequests = make(map[string]*Since)
-	requestChan = make(chan *PartyRequest, 100)
-	verifiedBlockChan = make(chan *VerifiedBlock, 100)
 }
 
 type VerifiedBlock struct {
@@ -636,7 +629,7 @@ func (party *PartyLine) StartPack(packHash string) {
 	pack := party.Packs[packHash]
 
 	// party ids are alphanum
-	partyDir := filepath.Join(sharedDir, party.Id)
+	partyDir := filepath.Join(party.WhiteBox.SharedDir, party.Id)
 	partyDirAbs, err := filepath.Abs(partyDir)
 	if err != nil {
 		log.Println(err)
@@ -719,7 +712,7 @@ func (party *PartyLine) ProcessRequest(partyEnv *PartyEnvelope) {
 	uniqueId += partyRequest.PackHash + partyRequest.FileHash
 	idBytes := []byte(uniqueId)
 	id := sha256Bytes(idBytes)
-	since, ok := freshRequests[id]
+	since, ok := party.WhiteBox.FreshRequests[id]
 	if ok && (partyRequest.Time.Before(since.Reported) ||
 		time.Now().UTC().Sub(since.Received) < 5*time.Second) {
 		// request is stale ||
@@ -735,7 +728,7 @@ func (party *PartyLine) ProcessRequest(partyEnv *PartyEnvelope) {
 	since = new(Since)
 	since.Reported = partyRequest.Time
 	since.Received = now
-	freshRequests[id] = since
+	party.WhiteBox.FreshRequests[id] = since
 
 	pack, ok := party.Packs[partyRequest.PackHash]
 	if !ok || pack.State == AVAILABLE {
@@ -751,7 +744,7 @@ func (party *PartyLine) ProcessRequest(partyEnv *PartyEnvelope) {
 	// reuse the time field as expiry, set for 6 seconds
 	partyRequest.Time = now.Add(6 * time.Second)
 
-	requestChan <- partyRequest
+	party.WhiteBox.RequestChan <- partyRequest
 }
 
 func (party *PartyLine) SendRequest(packHash string, file *PackFileInfo) {
@@ -957,7 +950,7 @@ func (party *PartyLine) ProcessFulfillment(partyEnv *PartyEnvelope) {
 	}
 	verifiedBlock.Hash = blockHash
 
-	verifiedBlockChan <- verifiedBlock
+	party.WhiteBox.VerifiedBlockChan <- verifiedBlock
 }
 
 func (party *PartyLine) chooseBlock(request *PartyRequest) *Block {
@@ -1080,7 +1073,7 @@ func (wb *WhiteBox) FileRequester() {
 
 func (wb *WhiteBox) RequestSender() {
 	for {
-		request := <-requestChan
+		request := <-wb.RequestChan
 		if request.PeerId == wb.PeerSelf.Id() {
 			// it me
 			log.Println("(dbg) request self")
@@ -1113,7 +1106,7 @@ func (wb *WhiteBox) RequestSender() {
 		request.Coverage[majorIdx] |= (1 << minorIdx)
 
 		// requeue
-		requestChan <- request
+		party.WhiteBox.RequestChan <- request
 		// time.Sleep(1 * time.Second)
 	}
 }
@@ -1145,7 +1138,7 @@ func setBlockWritten(verifiedBlock *VerifiedBlock) {
 
 func (wb *WhiteBox) VerifiedBlockWriter() {
 	for {
-		verifiedBlock := <-verifiedBlockChan
+		verifiedBlock := <-wb.VerifiedBlockChan
 
 		if haveBlock(verifiedBlock) {
 			log.Println("(dbg) have block skipping")

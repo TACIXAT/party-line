@@ -11,12 +11,6 @@ import (
 	"time"
 )
 
-var noReroute map[time.Time]bool
-
-func init() {
-	noReroute = make(map[time.Time]bool)
-}
-
 func (wb *WhiteBox) processMessage(strMsg string) {
 	env := new(Envelope)
 	err := json.Unmarshal([]byte(strMsg), env)
@@ -28,12 +22,12 @@ func (wb *WhiteBox) processMessage(strMsg string) {
 	}
 
 	if !env.Time.IsZero() && env.To != wb.PeerSelf.Id() {
-		_, seen := noReroute[env.Time]
+		_, seen := wb.NoReroute[env.Time]
 		if !seen {
 			return
 		}
 
-		noReroute[env.Time] = true
+		wb.NoReroute[env.Time] = true
 
 		wb.route(env)
 		return
