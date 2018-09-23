@@ -1196,7 +1196,7 @@ func (wb *WhiteBox) writeZeroFile(name string, size int64) {
 		return
 	}
 
-	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_RDWR, 0666)
+	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		log.Println(err)
 		wb.setStatus("error when prepping file")

@@ -3,6 +3,9 @@ package tests
 import (
 	"errors"
 	"github.com/TACIXAT/party-line/white-box"
+	"log"
+	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -28,7 +31,7 @@ func testBootstrap(wb0, wb1 *whitebox.WhiteBox, port1Str string) error {
 	case <-successChan:
 		// nop
 	case <-time.After(500 * time.Millisecond):
-		return errors.New("Failed to bootstrap.")
+		return errors.New("Failed to bootstrap (timeout).")
 	}
 
 	return nil
@@ -40,14 +43,14 @@ func testChat(wb0, wb1 *whitebox.WhiteBox) error {
 	case <-wb1.ChatChannel:
 		// nop
 	case <-time.After(500 * time.Millisecond):
-		return errors.New("No chat received from wb1.")
+		return errors.New("No chat received by wb1 (timeout).")
 	}
 
 	select {
 	case <-wb0.ChatChannel:
 		// nop
 	case <-time.After(500 * time.Millisecond):
-		return errors.New("No chat received from wb0.")
+		return errors.New("No chat received by wb0 (timeout).")
 	}
 
 	return nil
@@ -67,7 +70,7 @@ func checkAccept(party *whitebox.PartyLine, successChan chan bool) {
 	successChan <- true
 }
 
-func testParty(wb0, wb1 *whitebox.WhiteBox) error {
+func testPartyInvite(wb0, wb1 *whitebox.WhiteBox) (string, error) {
 	min1 := wb1.PeerSelf.Min()
 
 	partyId := wb0.PartyStart("coolname")
@@ -80,7 +83,7 @@ func testParty(wb0, wb1 *whitebox.WhiteBox) error {
 	case <-successChan:
 		// nop
 	case <-time.After(500 * time.Millisecond):
-		return errors.New("No invite received (was it sent?).")
+		return "", errors.New("No invite received (timeout).")
 	}
 
 	wb1.AcceptInvite(partyId)
@@ -89,7 +92,113 @@ func testParty(wb0, wb1 *whitebox.WhiteBox) error {
 	case <-successChan:
 		// nop
 	case <-time.After(500 * time.Millisecond):
-		return errors.New("No acceptance received (was it sent?).")
+		return "", errors.New("No acceptance received (timeout).")
+	}
+
+	return partyId, nil
+}
+
+func testPartyChat(wb0, wb1 *whitebox.WhiteBox, partyId string) error {
+	party1 := wb1.Parties[partyId]
+	party1.SendChat("encrypted lol :D fuck nasa spies")
+
+	select {
+	case chat := <-wb1.ChatChannel:
+		if chat.Channel != partyId {
+			return errors.New("Bad channel for chat received by wb1.")
+		}
+	case <-time.After(500 * time.Millisecond):
+		return errors.New("No chat received by wb1 (timeout).")
+	}
+
+	select {
+	case chat := <-wb0.ChatChannel:
+		if chat.Channel != partyId {
+			return errors.New("Bad channel for chat received by wb0.")
+		}
+	case <-time.After(500 * time.Millisecond):
+		return errors.New("No chat received by wb0 (timeout).")
+	}
+
+	return nil
+}
+
+func checkPack(wb *whitebox.WhiteBox, partyId string, successChan chan bool) {
+	for len(wb.Parties[partyId].Packs) == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	successChan <- true
+}
+
+func testScanPack(wb0, wb1 *whitebox.WhiteBox, partyId, dir0 string) error {
+	partyDir := filepath.Join(dir0, partyId)
+	err := os.MkdirAll(partyDir, 0700)
+	if err != nil {
+		log.Println("(TEST)", err)
+		return errors.New("Error creating party dir.")
+	}
+
+	testPackPath := filepath.Join(partyDir, "test.pack")
+	packContents := `
+		{
+			"name": "test.pack",
+			"files": [
+				"test.file"
+			]
+		}`
+
+	testPackFile, err := os.OpenFile(testPackPath, os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		log.Println("(TEST)", err)
+		return errors.New("Error creating pack file.")
+	}
+
+	n, err := testPackFile.Write([]byte(packContents))
+	if err != nil || n != len(packContents) {
+		return errors.New("Error writing pack file.")
+	}
+
+	err = testPackFile.Close()
+	if err != nil {
+		return errors.New("Error closing pack file.")
+	}
+
+	testFilePath := filepath.Join(partyDir, "test.file")
+	fileContents :=
+		`X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*`
+
+	testFileFile, err := os.OpenFile(testFilePath, os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		return errors.New("Error creating file file.")
+	}
+
+	n, err = testFileFile.Write([]byte(fileContents))
+	if err != nil || n != len(fileContents) {
+		return errors.New("Error writing file file.")
+	}
+
+	err = testFileFile.Close()
+	if err != nil {
+		return errors.New("Error closing file file.")
+	}
+
+	wb0.RescanPacks()
+
+	successChan := make(chan bool)
+	go checkPack(wb0, partyId, successChan)
+	select {
+	case <-successChan:
+		// nop
+	case <-time.After(500 * time.Millisecond):
+		return errors.New("No pack created (timeout).")
+	}
+
+	go checkPack(wb1, partyId, successChan)
+	select {
+	case <-successChan:
+		// nop
+	case <-time.After(500 * time.Millisecond):
+		return errors.New("No pack received (timeout).")
 	}
 
 	return nil
@@ -100,33 +209,54 @@ func testBlah(wb0, wb1 *whitebox.WhiteBox) error {
 }
 
 func TestClientInteractions(t *testing.T) {
+	var partyId string // predec so we can use goto
+
 	var port0 uint16 = 3499
 	port0Str := strconv.FormatInt(int64(port0), 10)
-	dir0 := "/tmp/partylog.test0"
+	dir0 := filepath.Join(os.TempDir(), "partytest.dir0")
 	wb0 := whitebox.New(dir0, "127.0.0.1", port0Str)
 	wb0.Run(port0)
 
 	var port1 uint16 = 4919
 	port1Str := strconv.FormatInt(int64(port1), 10)
-	dir1 := "/tmp/partylog.test1"
+	dir1 := filepath.Join(os.TempDir(), "partytest.dir1")
 	wb1 := whitebox.New(dir1, "127.0.0.1", port1Str)
 	wb1.Run(port1)
 
 	err := testBootstrap(wb0, wb1, port1Str)
 	if err != nil {
 		t.Errorf(err.Error())
-		return
+		goto cleanup
 	}
 
 	err = testChat(wb0, wb1)
 	if err != nil {
 		t.Errorf(err.Error())
-		return
+		goto cleanup
 	}
 
-	err = testParty(wb0, wb1)
+	partyId, err = testPartyInvite(wb0, wb1)
 	if err != nil {
 		t.Errorf(err.Error())
-		return
+		goto cleanup
 	}
+
+	err = testPartyChat(wb0, wb1, partyId)
+	if err != nil {
+		t.Errorf(err.Error())
+		goto cleanup
+	}
+
+	err = testScanPack(wb0, wb1, partyId, dir0)
+	if err != nil {
+		t.Errorf(err.Error())
+		goto cleanup
+	}
+
+	// testGetPack
+
+cleanup:
+	os.RemoveAll(dir0)
+	os.RemoveAll(dir1)
+	return
 }
