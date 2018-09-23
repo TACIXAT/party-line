@@ -1,4 +1,4 @@
-package tests
+package beigebox
 
 import (
 	"errors"
@@ -30,7 +30,7 @@ func testBootstrap(wb0, wb1 *whitebox.WhiteBox, port1Str string) error {
 	select {
 	case <-successChan:
 		// nop
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(1000 * time.Millisecond):
 		return errors.New("Failed to bootstrap (timeout).")
 	}
 
@@ -42,14 +42,14 @@ func testChat(wb0, wb1 *whitebox.WhiteBox) error {
 	select {
 	case <-wb1.ChatChannel:
 		// nop
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(1000 * time.Millisecond):
 		return errors.New("No chat received by wb1 (timeout).")
 	}
 
 	select {
 	case <-wb0.ChatChannel:
 		// nop
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(1000 * time.Millisecond):
 		return errors.New("No chat received by wb0 (timeout).")
 	}
 
@@ -82,7 +82,7 @@ func testPartyInvite(wb0, wb1 *whitebox.WhiteBox) (string, error) {
 	select {
 	case <-successChan:
 		// nop
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(1000 * time.Millisecond):
 		return "", errors.New("No invite received (timeout).")
 	}
 
@@ -91,7 +91,7 @@ func testPartyInvite(wb0, wb1 *whitebox.WhiteBox) (string, error) {
 	select {
 	case <-successChan:
 		// nop
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(1000 * time.Millisecond):
 		return "", errors.New("No acceptance received (timeout).")
 	}
 
@@ -107,7 +107,7 @@ func testPartyChat(wb0, wb1 *whitebox.WhiteBox, partyId string) error {
 		if chat.Channel != partyId {
 			return errors.New("Bad channel for chat received by wb1.")
 		}
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(1000 * time.Millisecond):
 		return errors.New("No chat received by wb1 (timeout).")
 	}
 
@@ -116,7 +116,7 @@ func testPartyChat(wb0, wb1 *whitebox.WhiteBox, partyId string) error {
 		if chat.Channel != partyId {
 			return errors.New("Bad channel for chat received by wb0.")
 		}
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(1000 * time.Millisecond):
 		return errors.New("No chat received by wb0 (timeout).")
 	}
 
@@ -130,8 +130,8 @@ func checkPack(wb *whitebox.WhiteBox, partyId string, successChan chan bool) {
 	successChan <- true
 }
 
-func testScanPack(wb0, wb1 *whitebox.WhiteBox, partyId, dir0 string) error {
-	partyDir := filepath.Join(dir0, partyId)
+func testScanPack(wb0, wb1 *whitebox.WhiteBox, partyId string) error {
+	partyDir := filepath.Join(wb0.SharedDir, partyId)
 	err := os.MkdirAll(partyDir, 0700)
 	if err != nil {
 		log.Println("(TEST)", err)
@@ -189,7 +189,7 @@ func testScanPack(wb0, wb1 *whitebox.WhiteBox, partyId, dir0 string) error {
 	select {
 	case <-successChan:
 		// nop
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(1000 * time.Millisecond):
 		return errors.New("No pack created (timeout).")
 	}
 
@@ -197,14 +197,64 @@ func testScanPack(wb0, wb1 *whitebox.WhiteBox, partyId, dir0 string) error {
 	select {
 	case <-successChan:
 		// nop
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(1000 * time.Millisecond):
 		return errors.New("No pack received (timeout).")
 	}
 
 	return nil
 }
 
-func testBlah(wb0, wb1 *whitebox.WhiteBox) error {
+func checkDownload(
+	wb *whitebox.WhiteBox, partyId, packHash string, successChan chan bool) {
+	for wb.Parties[partyId].Packs[packHash].State != whitebox.COMPLETE {
+		time.Sleep(10 * time.Millisecond)
+	}
+	successChan <- true
+}
+
+func testGetPack(wb *whitebox.WhiteBox, partyId string) error {
+	party := wb.Parties[partyId]
+
+	var packHash string
+	var pack *whitebox.Pack
+	for packHash, pack = range party.Packs {
+		break
+	}
+
+	if pack == nil {
+		return errors.New("Pack not found.")
+	}
+
+	if pack.State != whitebox.AVAILABLE {
+		return errors.New("Pack not available.")
+	}
+
+	party.StartPack(packHash)
+
+	successChan := make(chan bool)
+	go checkDownload(wb, partyId, packHash, successChan)
+	select {
+	case <-successChan:
+		// nop
+	case <-time.After(30000 * time.Millisecond):
+		return errors.New("No pack downloaded (timeout).")
+	}
+
+	return nil
+}
+
+func testDisconnect(wb0, wb1 *whitebox.WhiteBox) error {
+	// causes nilptr while download is going
+	// wb0.DisconnectParties()
+	// validate dc
+
+	// wb0.SendDisconnect()
+	// validate dc
+
+	return nil
+}
+
+func testTemplate(wb0, wb1 *whitebox.WhiteBox) error {
 	return nil
 }
 
@@ -247,13 +297,23 @@ func TestClientInteractions(t *testing.T) {
 		goto cleanup
 	}
 
-	err = testScanPack(wb0, wb1, partyId, dir0)
+	err = testScanPack(wb0, wb1, partyId)
 	if err != nil {
 		t.Errorf(err.Error())
 		goto cleanup
 	}
 
-	// testGetPack
+	err = testGetPack(wb1, partyId)
+	if err != nil {
+		t.Errorf(err.Error())
+		goto cleanup
+	}
+
+	err = testDisconnect(wb0, wb1)
+	if err != nil {
+		t.Errorf(err.Error())
+		goto cleanup
+	}
 
 cleanup:
 	os.RemoveAll(dir0)
