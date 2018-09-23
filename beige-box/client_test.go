@@ -60,6 +60,13 @@ func checkInvite(wb *whitebox.WhiteBox, successChan chan bool) {
 	successChan <- true
 }
 
+func checkAccept(party *whitebox.PartyLine, successChan chan bool) {
+	for len(party.MinList) < 2 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	successChan <- true
+}
+
 func testParty(wb0, wb1 *whitebox.WhiteBox) error {
 	min1 := wb1.PeerSelf.Min()
 
@@ -76,6 +83,15 @@ func testParty(wb0, wb1 *whitebox.WhiteBox) error {
 		return errors.New("No invite received (was it sent?).")
 	}
 
+	wb1.AcceptInvite(partyId)
+	go checkAccept(party0, successChan)
+	select {
+	case <-successChan:
+		// nop
+	case <-time.After(500 * time.Millisecond):
+		return errors.New("No acceptance received (was it sent?).")
+	}
+
 	return nil
 }
 
@@ -87,13 +103,12 @@ func TestClientInteractions(t *testing.T) {
 	var port0 uint16 = 3499
 	port0Str := strconv.FormatInt(int64(port0), 10)
 	dir0 := "/tmp/partylog.test0"
-	var port1 uint16 = 4919
-	port1Str := strconv.FormatInt(int64(port1), 10)
-	dir1 := "/tmp/partylog.test1"
-
 	wb0 := whitebox.New(dir0, "127.0.0.1", port0Str)
 	wb0.Run(port0)
 
+	var port1 uint16 = 4919
+	port1Str := strconv.FormatInt(int64(port1), 10)
+	dir1 := "/tmp/partylog.test1"
 	wb1 := whitebox.New(dir1, "127.0.0.1", port1Str)
 	wb1.Run(port1)
 

@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/TACIXAT/party-line/party-lib"
 	"github.com/TACIXAT/party-line/white-box"
 	"github.com/gizak/termui"
 	"github.com/mattn/go-runewidth"
@@ -13,7 +12,7 @@ import (
 	"time"
 )
 
-var chatLog []partylib.Chat
+var chatLog []whitebox.Chat
 var messageBox *termui.Par
 var IDS int // id display size
 var chatMutex *sync.Mutex
@@ -140,7 +139,7 @@ func handleBootstrap(wb *whitebox.WhiteBox, toks []string) {
 
 func chatStatus(status string) {
 	log.Println(status)
-	chat := partylib.Chat{
+	chat := whitebox.Chat{
 		Time:    time.Now(),
 		Id:      "SYSTEM",
 		Channel: "",
@@ -153,7 +152,7 @@ func setStatus(status string) {
 	statusChan <- status
 }
 
-func addChat(chat partylib.Chat) {
+func addChat(chat whitebox.Chat) {
 	chatMutex.Lock()
 	chatLog = append(chatLog, chat)
 	chats := formatChats()

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/TACIXAT/party-line/party-lib"
 	"github.com/kevinburke/nacl/sign"
 	"log"
 	"net"
@@ -105,7 +104,7 @@ func (wb *WhiteBox) processChat(env *Envelope) {
 	uniqueId := env.From + "." + msgChat.Time.String()
 	_, seen := wb.SeenChats[uniqueId]
 	if !seen {
-		chat := partylib.Chat{
+		chat := Chat{
 			Time:    time.Now(),
 			Id:      env.From,
 			Channel: "mainline",

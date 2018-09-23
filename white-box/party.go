@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/TACIXAT/party-line/party-lib"
 	"github.com/kevinburke/nacl/box"
 	"github.com/kevinburke/nacl/sign"
 	"io"
@@ -408,7 +407,7 @@ func (party *PartyLine) ProcessChat(partyEnv *PartyEnvelope) {
 	if !seen {
 		party.SeenChats[chatId] = true
 
-		chat := partylib.Chat{
+		chat := Chat{
 			Time:    time.Now().UTC(),
 			Id:      partyChat.PeerId,
 			Channel: party.Id,

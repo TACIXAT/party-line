@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/TACIXAT/party-line/party-lib"
 	"github.com/kevinburke/nacl"
 	"github.com/kevinburke/nacl/box"
 	"github.com/kevinburke/nacl/sign"
@@ -18,11 +17,6 @@ import (
 	"time"
 )
 
-type Status struct {
-	Priority int
-	Message  string
-}
-
 const (
 	TONE_LOW = iota
 	TONE_HIGH
@@ -30,7 +24,7 @@ const (
 
 type WhiteBox struct {
 	BsId              string
-	ChatChannel       chan partylib.Chat
+	ChatChannel       chan Chat
 	StatusChannel     chan Status
 	Self              Self
 	PeerSelf          Peer
@@ -59,7 +53,7 @@ func (wb *WhiteBox) Run(port uint16) {
 
 func New(dir, addr, port string) *WhiteBox {
 	wb := new(WhiteBox)
-	wb.ChatChannel = make(chan partylib.Chat, 100)
+	wb.ChatChannel = make(chan Chat, 100)
 	wb.StatusChannel = make(chan Status, 100)
 	wb.SeenChats = make(map[string]bool)
 
@@ -85,8 +79,20 @@ func New(dir, addr, port string) *WhiteBox {
 	return wb
 }
 
-func (wb *WhiteBox) addChat(chat partylib.Chat) {
+func (wb *WhiteBox) addChat(chat Chat) {
 	wb.ChatChannel <- chat
+}
+
+type Status struct {
+	Priority int
+	Message  string
+}
+
+type Chat struct {
+	Time    time.Time
+	Id      string
+	Channel string
+	Message string
 }
 
 type Self struct {
