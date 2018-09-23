@@ -12,8 +12,7 @@ import (
 
 /*
 TODO:
-	test file transfer
-	test dropped pack name in receiving file structure
+	write client to client tests
 
 	scrolling
 	cursor on input

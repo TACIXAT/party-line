@@ -248,8 +248,10 @@ func (wb *WhiteBox) findClosestN(idBytes []byte, n int) []*PeerEntry {
 			}
 		}
 
-		closest = append(closest[:i], append([]*PeerEntry{entry}, closest[i:]...)...)
-		dists = append(dists[:i], append([]*big.Int{entryDist}, dists[i:]...)...)
+		closest = append(
+			closest[:i], append([]*PeerEntry{entry}, closest[i:]...)...)
+		dists = append(
+			dists[:i], append([]*big.Int{entryDist}, dists[i:]...)...)
 		if len(closest) > n {
 			closest = closest[:n]
 		}

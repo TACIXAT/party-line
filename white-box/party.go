@@ -1265,6 +1265,7 @@ func (wb *WhiteBox) PartyStart(name string) string {
 	party := new(PartyLine)
 
 	// this shouldn't be guessable, so we will enforce 12 bytes random
+	// that's like 8 times as many bits
 	name = name[:minimum(len(name), 8)]
 	idHex := hex.EncodeToString(idBytes)
 
