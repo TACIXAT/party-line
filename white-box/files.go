@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -60,10 +61,11 @@ const (
 )
 
 type Pack struct {
-	Name  string
-	Files []*PackFileInfo
-	State int                  `json:"-"`
-	Peers map[string]time.Time `json:"-"`
+	Name     string
+	Files    []*PackFileInfo
+	State    int                  `json:"-"`
+	Peers    map[string]time.Time `json:"-"`
+	FileLock *sync.Mutex          `json:"-"`
 }
 
 type PendingPack struct {
@@ -93,6 +95,7 @@ func (pack *Pack) ToPendingPack() *PendingPack {
 	pendingPack.Name = pack.Name
 	pendingPack.Hash = sha256Pack(pack)
 
+	pack.FileLock.Lock()
 	for _, file := range pack.Files {
 		pendingFile := new(PendingFile)
 		pendingFile.Name = file.Name
@@ -105,6 +108,7 @@ func (pack *Pack) ToPendingPack() *PendingPack {
 		pendingFile.Path = file.Path
 		pendingPack.Files = append(pendingPack.Files, *pendingFile)
 	}
+	pack.FileLock.Unlock()
 
 	return pendingPack
 }
@@ -500,6 +504,7 @@ func (wb *WhiteBox) buildPack(partyId string, path string, targetFile *os.File) 
 	pack.Peers[wb.PeerSelf.Id()] = time.Now().UTC()
 	pack.State = COMPLETE
 	pack.Files = make([]*PackFileInfo, 0)
+	pack.FileLock = new(sync.Mutex)
 
 	dotPack, err := wb.unpackFile(targetFile)
 	if err != nil {

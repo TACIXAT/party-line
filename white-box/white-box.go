@@ -14,6 +14,7 @@ import (
 	"math/big"
 	"net"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -40,6 +41,19 @@ type WhiteBox struct {
 	RequestChan       chan *PartyRequest
 	VerifiedBlockChan chan *VerifiedBlock
 	NoReroute         map[time.Time]bool
+	LockBox           *LockBox
+}
+
+type LockBox struct {
+	InviteLock *sync.Mutex
+	PartyLock  *sync.Mutex
+}
+
+func NewLockBox() *LockBox {
+	lockBox := new(LockBox)
+	lockBox.PartyLock = new(sync.Mutex)
+	lockBox.InviteLock = new(sync.Mutex)
+	return lockBox
 }
 
 func (wb *WhiteBox) Run(port uint16) {
@@ -72,6 +86,7 @@ func New(dir, addr, port string) *WhiteBox {
 	wb.RequestChan = make(chan *PartyRequest, 100)
 	wb.VerifiedBlockChan = make(chan *VerifiedBlock, 100)
 	wb.NoReroute = make(map[time.Time]bool)
+	wb.LockBox = NewLockBox()
 
 	log.Println(wb.BsId)
 	wb.chatStatus(wb.BsId)

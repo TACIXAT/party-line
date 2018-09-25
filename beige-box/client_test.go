@@ -1,3 +1,5 @@
+// this file is race conditions galore
+// will fix with a good public interface
 package beigebox
 
 import (
@@ -124,9 +126,11 @@ func testPartyChat(wb0, wb1 *whitebox.WhiteBox, partyId string) error {
 }
 
 func checkPack(wb *whitebox.WhiteBox, partyId string, successChan chan bool) {
-	for len(wb.Parties[partyId].Packs) == 0 {
+	party := wb.Parties[partyId]
+	for len(party.Packs) == 0 {
 		time.Sleep(10 * time.Millisecond)
 	}
+
 	successChan <- true
 }
 
@@ -243,13 +247,49 @@ func testGetPack(wb *whitebox.WhiteBox, partyId string) error {
 	return nil
 }
 
-func testDisconnect(wb0, wb1 *whitebox.WhiteBox) error {
-	// causes nilptr while download is going
-	// wb0.DisconnectParties()
-	// validate dc
+func checkPartyDisconnect(wb0, wb1 *whitebox.WhiteBox, successChan chan bool) {
+	var party *whitebox.PartyLine
+	for _, party = range wb1.Parties {
+		break
+	}
 
-	// wb0.SendDisconnect()
-	// validate dc
+	for len(wb0.Parties) > 0 || len(party.MinList) > 1 {
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	successChan <- true
+}
+
+func checkDisconnect(wb0, wb1 *whitebox.WhiteBox, successChan chan bool) {
+	cache, _ := wb1.PeerCache[wb0.PeerSelf.Id()]
+	for !cache.Disconnected {
+		cache, _ = wb1.PeerCache[wb0.PeerSelf.Id()]
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	successChan <- true
+}
+
+func testDisconnect(wb0, wb1 *whitebox.WhiteBox) error {
+	wb0.DisconnectParties()
+
+	successChan := make(chan bool)
+	go checkPartyDisconnect(wb0, wb1, successChan)
+	select {
+	case <-successChan:
+		// nop
+	case <-time.After(1000 * time.Millisecond):
+		return errors.New("No party disconnect (timeout).")
+	}
+
+	wb0.SendDisconnect()
+	go checkDisconnect(wb0, wb1, successChan)
+	select {
+	case <-successChan:
+		// nop
+	case <-time.After(1000 * time.Millisecond):
+		return errors.New("No disconnect (timeout).")
+	}
 
 	return nil
 }
@@ -259,6 +299,18 @@ func testTemplate(wb0, wb1 *whitebox.WhiteBox) error {
 }
 
 func TestClientInteractions(t *testing.T) {
+	// log to file
+	// TODO: change name irl
+	logname := "/tmp/partylog.test"
+	f, err := os.OpenFile(logname, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	log.SetOutput(f)
+
 	var partyId string // predec so we can use goto
 
 	var port0 uint16 = 3499
@@ -273,7 +325,7 @@ func TestClientInteractions(t *testing.T) {
 	wb1 := whitebox.New(dir1, "127.0.0.1", port1Str)
 	wb1.Run(port1)
 
-	err := testBootstrap(wb0, wb1, port1Str)
+	err = testBootstrap(wb0, wb1, port1Str)
 	if err != nil {
 		t.Errorf(err.Error())
 		goto cleanup
@@ -318,5 +370,6 @@ func TestClientInteractions(t *testing.T) {
 cleanup:
 	os.RemoveAll(dir0)
 	os.RemoveAll(dir1)
+	time.Sleep(5 * time.Second)
 	return
 }

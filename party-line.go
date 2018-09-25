@@ -28,6 +28,8 @@ TODO:
 	measure block packet size
 	increase block size
 
+	make decent public interface (locking and shit)
+
 	use releases
 	bs shortener
 	perm nodes

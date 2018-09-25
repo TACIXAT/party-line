@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -351,15 +352,18 @@ func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
 	if !ok {
 		newPack.Peers = make(map[string]time.Time)
 		newPack.State = AVAILABLE
+		newPack.FileLock = new(sync.Mutex)
 		party.Packs[hash] = newPack
 		pack = newPack
 
+		pack.FileLock.Lock()
 		for _, file := range pack.Files {
 			file.BlockMap = make(map[string]BlockInfo)
 			file.BlockLookup = make(map[uint64]string)
 			file.Coverage = make([]uint64, 0)
 			file.Path = ""
 		}
+		pack.FileLock.Unlock()
 	}
 
 	adTime := partyAdvertisement.Time
@@ -522,7 +526,10 @@ func (wb *WhiteBox) processParty(env *Envelope) {
 		return
 	}
 
+	wb.LockBox.PartyLock.Lock()
 	party, exists := wb.Parties[partyEnv.PartyId]
+	wb.LockBox.PartyLock.Unlock()
+
 	if !exists {
 		wb.setStatus("error invalid party (party)")
 		return
@@ -585,30 +592,51 @@ func (wb *WhiteBox) processInvite(env *Envelope) {
 	party.SeenChats = make(map[string]bool)
 	party.Packs = make(map[string]*Pack)
 
+	wb.LockBox.InviteLock.Lock()
 	_, inPending := wb.PendingInvites[party.Id]
+	wb.LockBox.InviteLock.Unlock()
+
+	wb.LockBox.PartyLock.Lock()
 	_, inParties := wb.Parties[party.Id]
+	wb.LockBox.PartyLock.Unlock()
 
 	if inPending || inParties {
 		wb.setStatus("reinvite ignored for " + party.Id)
 		return
 	}
 
+	wb.LockBox.InviteLock.Lock()
 	wb.PendingInvites[party.Id] = party
+	wb.LockBox.InviteLock.Unlock()
+
 	party.WhiteBox.setStatus(fmt.Sprintf("invite received for %s", party.Id))
 }
 
 func (wb *WhiteBox) AcceptInvite(partyId string) {
+	wb.LockBox.InviteLock.Lock()
 	party := wb.PendingInvites[partyId]
+	wb.LockBox.InviteLock.Unlock()
 
-	if _, joined := wb.Parties[partyId]; joined {
+	wb.LockBox.PartyLock.Lock()
+	_, joined := wb.Parties[partyId]
+	wb.LockBox.PartyLock.Unlock()
+
+	if joined {
 		party.WhiteBox.setStatus("error already joined party with id")
 		log.Println("party id in both pending and parties")
 		return
 	}
 
+	wb.LockBox.InviteLock.Lock()
 	delete(wb.PendingInvites, partyId)
+	wb.LockBox.InviteLock.Unlock()
+
 	party.SendAnnounce()
+
+	wb.LockBox.PartyLock.Lock()
 	wb.Parties[party.Id] = party
+	wb.LockBox.PartyLock.Unlock()
+
 	party.WhiteBox.setStatus(fmt.Sprintf("accepted invite %s", party.Id))
 }
 
@@ -667,11 +695,13 @@ func (party *PartyLine) StartPack(packHash string) {
 
 	pack.SetPaths(partyDirAbs)
 
+	pack.FileLock.Lock()
 	// write zeros to files
 	for _, file := range pack.Files {
 		party.WhiteBox.writeZeroFile(file.Path, file.Size)
 		file.Coverage = emptyCoverage(file.Size)
 	}
+	pack.FileLock.Unlock()
 
 	pack.State = ACTIVE
 }
@@ -771,12 +801,14 @@ func (party *PartyLine) SendRequest(packHash string, file *PackFileInfo) {
 
 func (party *PartyLine) SendRequests(packHash string, pack *Pack) {
 	complete := true
+	pack.FileLock.Lock()
 	for _, file := range pack.Files {
 		if !isFullCoverage(file.Size, file.Coverage) {
 			party.SendRequest(packHash, file)
 			complete = false
 		}
 	}
+	pack.FileLock.Unlock()
 
 	if complete {
 		pack.State = COMPLETE
@@ -1058,6 +1090,7 @@ func (party *PartyLine) chooseBlock(request *PartyRequest) *Block {
 
 func (wb *WhiteBox) FileRequester() {
 	for {
+		wb.LockBox.PartyLock.Lock()
 		for _, party := range wb.Parties {
 			for packHash, pack := range party.Packs {
 				if pack.State == ACTIVE {
@@ -1066,6 +1099,7 @@ func (wb *WhiteBox) FileRequester() {
 				}
 			}
 		}
+		wb.LockBox.PartyLock.Unlock()
 		time.Sleep(5 * time.Second)
 	}
 }
@@ -1085,7 +1119,15 @@ func (wb *WhiteBox) RequestSender() {
 			continue
 		}
 
-		party := wb.Parties[request.PartyId]
+		// TODO: add lock to party, block delete
+		// TODO: check party not nil (have)
+		wb.LockBox.PartyLock.Lock()
+		party, ok := wb.Parties[request.PartyId]
+		wb.LockBox.PartyLock.Unlock()
+		if !ok || party == nil {
+			log.Println("(dbg) party over")
+			return
+		}
 
 		log.Printf("(dbg) got coverage %v\n", request.Coverage)
 
@@ -1105,8 +1147,11 @@ func (wb *WhiteBox) RequestSender() {
 		request.Coverage[majorIdx] |= (1 << minorIdx)
 
 		// requeue
-		party.WhiteBox.RequestChan <- request
-		// time.Sleep(1 * time.Second)
+		wb.RequestChan <- request
+
+		// we sleep a little to let other stuff get the party lock
+		// 10kb * 500/s = 5MB/s
+		time.Sleep(2 * time.Millisecond)
 	}
 }
 
@@ -1239,15 +1284,19 @@ func (wb *WhiteBox) writeZeroFile(name string, size int64) {
 }
 
 func (wb *WhiteBox) advertiseAll() {
+	wb.LockBox.PartyLock.Lock()
 	for _, party := range wb.Parties {
 		party.AdvertisePacks()
 	}
+	wb.LockBox.PartyLock.Unlock()
 }
 
 func (wb *WhiteBox) DisconnectParties() {
+	wb.LockBox.PartyLock.Lock()
 	for _, party := range wb.Parties {
 		party.SendDisconnect()
 	}
+	wb.LockBox.PartyLock.Unlock()
 }
 
 func minimum(a, b int) int {
@@ -1282,7 +1331,9 @@ func (wb *WhiteBox) PartyStart(name string) string {
 
 	party.MinList[party.WhiteBox.PeerSelf.Id()] = 0
 
+	wb.LockBox.PartyLock.Lock()
 	wb.Parties[party.Id] = party
+	wb.LockBox.PartyLock.Unlock()
 
 	return party.Id
 }
