@@ -23,6 +23,11 @@ const (
 	TONE_HIGH
 )
 
+type LockingPartyMap struct {
+	Map   map[string]*PartyLine
+	Mutex *sync.Mutex
+}
+
 type WhiteBox struct {
 	BsId              string
 	ChatChannel       chan Chat
@@ -33,7 +38,7 @@ type WhiteBox struct {
 	IdealPeerIds      [256]*big.Int
 	EmptyList         bool
 	SeenChats         map[string]bool
-	Parties           map[string]*PartyLine
+	Parties           LockingPartyMap
 	PendingInvites    map[string]*PartyLine
 	PeerCache         map[string]PeerCache
 	SharedDir         string
@@ -41,19 +46,6 @@ type WhiteBox struct {
 	RequestChan       chan *PartyRequest
 	VerifiedBlockChan chan *VerifiedBlock
 	NoReroute         map[time.Time]bool
-	LockBox           *LockBox
-}
-
-type LockBox struct {
-	InviteLock *sync.Mutex
-	PartyLock  *sync.Mutex
-}
-
-func NewLockBox() *LockBox {
-	lockBox := new(LockBox)
-	lockBox.PartyLock = new(sync.Mutex)
-	lockBox.InviteLock = new(sync.Mutex)
-	return lockBox
 }
 
 func (wb *WhiteBox) Run(port uint16) {
@@ -78,15 +70,16 @@ func New(dir, addr, port string) *WhiteBox {
 
 	wb.BsId = fmt.Sprintf("%s/%s/%s", addr, port, wb.PeerSelf.ShortId())
 	wb.EmptyList = true
-	wb.Parties = make(map[string]*PartyLine)
 	wb.PendingInvites = make(map[string]*PartyLine)
 	wb.PeerCache = make(map[string]PeerCache)
+
+	wb.Parties.Map = make(map[string]*PartyLine)
+	wb.Parties.Mutex = new(sync.Mutex)
 
 	wb.FreshRequests = make(map[string]*Since)
 	wb.RequestChan = make(chan *PartyRequest, 100)
 	wb.VerifiedBlockChan = make(chan *VerifiedBlock, 100)
 	wb.NoReroute = make(map[time.Time]bool)
-	wb.LockBox = NewLockBox()
 
 	log.Println(wb.BsId)
 	wb.chatStatus(wb.BsId)

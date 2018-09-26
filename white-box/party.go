@@ -282,7 +282,7 @@ func (party *PartyLine) SendDisconnect() {
 		return
 	}
 
-	delete(party.WhiteBox.Parties, party.Id)
+	delete(party.WhiteBox.Parties.Map, party.Id)
 
 	signedPartyDisconnect := sign.Sign(
 		[]byte(jsonPartyDisconnect), party.WhiteBox.Self.SignPrv)
@@ -341,6 +341,11 @@ func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
 
 	newPack := new(Pack)
 	*newPack = partyAdvertisement.Pack
+	// DATA RACE: with files:227 (sha256Pack)
+	// DATA RACE: with party:660 (StartPack)
+	// DATA RACE: with client_test:243 (testGetPack)
+	newPack.Peers = make(map[string]time.Time)
+	newPack.FileLock = new(sync.Mutex)
 
 	hash := partyAdvertisement.Hash
 	if hash != sha256Pack(newPack) {
@@ -350,10 +355,10 @@ func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
 
 	pack, ok := party.Packs[hash]
 	if !ok {
-		newPack.Peers = make(map[string]time.Time)
 		newPack.State = AVAILABLE
-		newPack.FileLock = new(sync.Mutex)
 		party.Packs[hash] = newPack
+		// DATA RACE: with client_test:235 (testGetPack)
+		// DATA RACE: with client_test:36 (checkPack)
 		pack = newPack
 
 		pack.FileLock.Lock()
@@ -498,6 +503,7 @@ func (party *PartyLine) ProcessAnnounce(partyEnv *PartyEnvelope) {
 	}
 
 	_, seen := party.MinList[partyAnnounce.PeerId]
+	// DATA RACE: with client_test:69 (checkAccept)
 
 	if !seen {
 		party.MinList[partyAnnounce.PeerId] = 0
@@ -526,9 +532,9 @@ func (wb *WhiteBox) processParty(env *Envelope) {
 		return
 	}
 
-	wb.LockBox.PartyLock.Lock()
-	party, exists := wb.Parties[partyEnv.PartyId]
-	wb.LockBox.PartyLock.Unlock()
+	wb.Parties.Mutex.Lock()
+	party, exists := wb.Parties.Map[partyEnv.PartyId]
+	wb.Parties.Mutex.Unlock()
 
 	if !exists {
 		wb.setStatus("error invalid party (party)")
@@ -557,6 +563,7 @@ func (wb *WhiteBox) processParty(env *Envelope) {
 
 	if env.From == partyEnv.From && partyEnv.Type != "disconnect" {
 		party.MinList[partyEnv.From] = 0
+		// DATA RACE: with party:102 (getNeighbors)
 	}
 }
 
@@ -592,34 +599,30 @@ func (wb *WhiteBox) processInvite(env *Envelope) {
 	party.SeenChats = make(map[string]bool)
 	party.Packs = make(map[string]*Pack)
 
-	wb.LockBox.InviteLock.Lock()
 	_, inPending := wb.PendingInvites[party.Id]
-	wb.LockBox.InviteLock.Unlock()
 
-	wb.LockBox.PartyLock.Lock()
-	_, inParties := wb.Parties[party.Id]
-	wb.LockBox.PartyLock.Unlock()
+	wb.Parties.Mutex.Lock()
+	_, inParties := wb.Parties.Map[party.Id]
+	wb.Parties.Mutex.Unlock()
 
 	if inPending || inParties {
 		wb.setStatus("reinvite ignored for " + party.Id)
 		return
 	}
 
-	wb.LockBox.InviteLock.Lock()
 	wb.PendingInvites[party.Id] = party
-	wb.LockBox.InviteLock.Unlock()
+	// DATA RACE: party:632 (PendingInvites)
+	// DATA RACE: client_test:62 (checkInvite)
 
 	party.WhiteBox.setStatus(fmt.Sprintf("invite received for %s", party.Id))
 }
 
 func (wb *WhiteBox) AcceptInvite(partyId string) {
-	wb.LockBox.InviteLock.Lock()
 	party := wb.PendingInvites[partyId]
-	wb.LockBox.InviteLock.Unlock()
 
-	wb.LockBox.PartyLock.Lock()
-	_, joined := wb.Parties[partyId]
-	wb.LockBox.PartyLock.Unlock()
+	wb.Parties.Mutex.Lock()
+	_, joined := wb.Parties.Map[partyId]
+	wb.Parties.Mutex.Unlock()
 
 	if joined {
 		party.WhiteBox.setStatus("error already joined party with id")
@@ -627,15 +630,13 @@ func (wb *WhiteBox) AcceptInvite(partyId string) {
 		return
 	}
 
-	wb.LockBox.InviteLock.Lock()
 	delete(wb.PendingInvites, partyId)
-	wb.LockBox.InviteLock.Unlock()
 
 	party.SendAnnounce()
 
-	wb.LockBox.PartyLock.Lock()
-	wb.Parties[party.Id] = party
-	wb.LockBox.PartyLock.Unlock()
+	wb.Parties.Mutex.Lock()
+	wb.Parties.Map[party.Id] = party
+	wb.Parties.Mutex.Unlock()
 
 	party.WhiteBox.setStatus(fmt.Sprintf("accepted invite %s", party.Id))
 }
@@ -1090,8 +1091,8 @@ func (party *PartyLine) chooseBlock(request *PartyRequest) *Block {
 
 func (wb *WhiteBox) FileRequester() {
 	for {
-		wb.LockBox.PartyLock.Lock()
-		for _, party := range wb.Parties {
+		wb.Parties.Mutex.Lock()
+		for _, party := range wb.Parties.Map {
 			for packHash, pack := range party.Packs {
 				if pack.State == ACTIVE {
 					party.SendRequests(packHash, pack)
@@ -1099,7 +1100,7 @@ func (wb *WhiteBox) FileRequester() {
 				}
 			}
 		}
-		wb.LockBox.PartyLock.Unlock()
+		wb.Parties.Mutex.Unlock()
 		time.Sleep(5 * time.Second)
 	}
 }
@@ -1121,9 +1122,9 @@ func (wb *WhiteBox) RequestSender() {
 
 		// TODO: add lock to party, block delete
 		// TODO: check party not nil (have)
-		wb.LockBox.PartyLock.Lock()
-		party, ok := wb.Parties[request.PartyId]
-		wb.LockBox.PartyLock.Unlock()
+		wb.Parties.Mutex.Lock()
+		party, ok := wb.Parties.Map[request.PartyId]
+		wb.Parties.Mutex.Unlock()
 		if !ok || party == nil {
 			log.Println("(dbg) party over")
 			return
@@ -1284,19 +1285,19 @@ func (wb *WhiteBox) writeZeroFile(name string, size int64) {
 }
 
 func (wb *WhiteBox) advertiseAll() {
-	wb.LockBox.PartyLock.Lock()
-	for _, party := range wb.Parties {
+	wb.Parties.Mutex.Lock()
+	for _, party := range wb.Parties.Map {
 		party.AdvertisePacks()
 	}
-	wb.LockBox.PartyLock.Unlock()
+	wb.Parties.Mutex.Unlock()
 }
 
 func (wb *WhiteBox) DisconnectParties() {
-	wb.LockBox.PartyLock.Lock()
-	for _, party := range wb.Parties {
+	wb.Parties.Mutex.Lock()
+	for _, party := range wb.Parties.Map {
 		party.SendDisconnect()
 	}
-	wb.LockBox.PartyLock.Unlock()
+	wb.Parties.Mutex.Unlock()
 }
 
 func minimum(a, b int) int {
@@ -1331,9 +1332,9 @@ func (wb *WhiteBox) PartyStart(name string) string {
 
 	party.MinList[party.WhiteBox.PeerSelf.Id()] = 0
 
-	wb.LockBox.PartyLock.Lock()
-	wb.Parties[party.Id] = party
-	wb.LockBox.PartyLock.Unlock()
+	wb.Parties.Mutex.Lock()
+	wb.Parties.Map[party.Id] = party
+	wb.Parties.Mutex.Unlock()
 
 	return party.Id
 }

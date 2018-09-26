@@ -18,6 +18,7 @@ func checkBS(wb0, wb1 *whitebox.WhiteBox, successChan chan bool) {
 	cache1, seen1 := wb1.PeerCache[wb0.PeerSelf.Id()]
 	for !cache0.Added || !seen0 || !cache1.Added || !seen1 {
 		cache0, seen0 = wb0.PeerCache[wb1.PeerSelf.Id()]
+		// DATA RACE: with unknown:N (unknown)
 		cache1, seen1 = wb1.PeerCache[wb0.PeerSelf.Id()]
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -76,7 +77,9 @@ func testPartyInvite(wb0, wb1 *whitebox.WhiteBox) (string, error) {
 	min1 := wb1.PeerSelf.Min()
 
 	partyId := wb0.PartyStart("coolname")
-	party0 := wb0.Parties[partyId]
+	wb0.Parties.Mutex.Lock()
+	party0 := wb0.Parties.Map[partyId]
+	wb0.Parties.Mutex.Unlock()
 	party0.SendInvite(&min1)
 
 	successChan := make(chan bool)
@@ -101,7 +104,9 @@ func testPartyInvite(wb0, wb1 *whitebox.WhiteBox) (string, error) {
 }
 
 func testPartyChat(wb0, wb1 *whitebox.WhiteBox, partyId string) error {
-	party1 := wb1.Parties[partyId]
+	wb1.Parties.Mutex.Lock()
+	party1 := wb1.Parties.Map[partyId]
+	wb1.Parties.Mutex.Unlock()
 	party1.SendChat("encrypted lol :D fuck nasa spies")
 
 	select {
@@ -126,7 +131,9 @@ func testPartyChat(wb0, wb1 *whitebox.WhiteBox, partyId string) error {
 }
 
 func checkPack(wb *whitebox.WhiteBox, partyId string, successChan chan bool) {
-	party := wb.Parties[partyId]
+	wb.Parties.Mutex.Lock()
+	party := wb.Parties.Map[partyId]
+	wb.Parties.Mutex.Unlock()
 	for len(party.Packs) == 0 {
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -210,14 +217,19 @@ func testScanPack(wb0, wb1 *whitebox.WhiteBox, partyId string) error {
 
 func checkDownload(
 	wb *whitebox.WhiteBox, partyId, packHash string, successChan chan bool) {
-	for wb.Parties[partyId].Packs[packHash].State != whitebox.COMPLETE {
+	wb.Parties.Mutex.Lock()
+	pack := wb.Parties.Map[partyId].Packs[packHash]
+	wb.Parties.Mutex.Unlock()
+	for pack.State != whitebox.COMPLETE {
 		time.Sleep(10 * time.Millisecond)
 	}
 	successChan <- true
 }
 
 func testGetPack(wb *whitebox.WhiteBox, partyId string) error {
-	party := wb.Parties[partyId]
+	wb.Parties.Mutex.Lock()
+	party := wb.Parties.Map[partyId]
+	wb.Parties.Mutex.Unlock()
 
 	var packHash string
 	var pack *whitebox.Pack
@@ -240,7 +252,7 @@ func testGetPack(wb *whitebox.WhiteBox, partyId string) error {
 	select {
 	case <-successChan:
 		// nop
-	case <-time.After(30000 * time.Millisecond):
+	case <-time.After(20000 * time.Millisecond):
 		return errors.New("No pack downloaded (timeout).")
 	}
 
@@ -249,13 +261,19 @@ func testGetPack(wb *whitebox.WhiteBox, partyId string) error {
 
 func checkPartyDisconnect(wb0, wb1 *whitebox.WhiteBox, successChan chan bool) {
 	var party *whitebox.PartyLine
-	for _, party = range wb1.Parties {
+	wb1.Parties.Mutex.Lock()
+	for _, party = range wb1.Parties.Map {
 		break
 	}
+	wb1.Parties.Mutex.Unlock()
 
-	for len(wb0.Parties) > 0 || len(party.MinList) > 1 {
+	wb0.Parties.Mutex.Lock()
+	for len(wb0.Parties.Map) > 0 || len(party.MinList) > 1 {
+		wb0.Parties.Mutex.Unlock()
 		time.Sleep(10 * time.Millisecond)
+		wb0.Parties.Mutex.Lock()
 	}
+	wb0.Parties.Mutex.Unlock()
 
 	successChan <- true
 }
@@ -301,6 +319,7 @@ func testTemplate(wb0, wb1 *whitebox.WhiteBox) error {
 func TestClientInteractions(t *testing.T) {
 	// log to file
 	// TODO: change name irl
+
 	logname := "/tmp/partylog.test"
 	f, err := os.OpenFile(logname, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {

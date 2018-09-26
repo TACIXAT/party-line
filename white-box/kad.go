@@ -143,6 +143,9 @@ func (wb *WhiteBox) addPeer(peer *Peer) {
 
 	cache.Added = true
 	wb.PeerCache[peer.Id()] = cache
+	// DATA RACE: client_test:18 (checkBS)
+	// DATA RACE: client_test:21 (checkBS)
+	// DATA RACE: processors:182 (processVerify)
 
 	idBytes := peer.SignPub
 	insertId := new(big.Int)

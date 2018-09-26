@@ -224,16 +224,20 @@ func sha256Pack(pack *Pack) string {
 		return ""
 	}
 
+	pack.FileLock.Lock()
 	sort.Sort(ByFileName(pack.Files))
+	pack.FileLock.Unlock()
 
 	hash := sha256.New()
 	hash.Write([]byte(pack.Name))
+	pack.FileLock.Lock()
 	for _, packFileInfo := range pack.Files {
 		hash.Write([]byte(packFileInfo.Name))
 		hash.Write([]byte(packFileInfo.Hash))
 		hash.Write([]byte(packFileInfo.FirstBlockHash))
 		hash.Write([]byte(strconv.FormatInt(packFileInfo.Size, 10)))
 	}
+	pack.FileLock.Unlock()
 	return fmt.Sprintf("%x", hash.Sum(nil))
 }
 
@@ -584,7 +588,7 @@ func (wb *WhiteBox) buildPack(partyId string, path string, targetFile *os.File) 
 	sort.Sort(ByFileName(pack.Files))
 	packHash := sha256Pack(pack)
 
-	wb.Parties[partyId].Packs[packHash] = pack
+	wb.Parties.Map[partyId].Packs[packHash] = pack
 }
 
 func (wb *WhiteBox) walker(path string, info os.FileInfo, err error) error {
@@ -621,7 +625,8 @@ func (wb *WhiteBox) walker(path string, info os.FileInfo, err error) error {
 
 func (wb *WhiteBox) RescanPacks() {
 	// check for new and changed packs
-	for partyId, party := range wb.Parties {
+	wb.Parties.Mutex.Lock()
+	for partyId, party := range wb.Parties.Map {
 		party.ClearPacks()
 		targetDir := filepath.Join(wb.SharedDir, partyId)
 
@@ -632,6 +637,7 @@ func (wb *WhiteBox) RescanPacks() {
 
 		err = filepath.Walk(targetDir, wb.walker)
 	}
+	wb.Parties.Mutex.Unlock()
 
 	wb.advertiseAll()
 }
