@@ -13,6 +13,7 @@ import (
 /*
 TODO:
 	write client to client tests
+	lock for minlist, pendinginvites, peercache, pack
 
 	scrolling
 	cursor on input
