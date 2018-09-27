@@ -172,7 +172,9 @@ func handleChat(wb *whitebox.WhiteBox, buf string) {
 		return
 	}
 
-	for partyId, party := range wb.Parties {
+	wb.Parties.Mutex.Lock()
+	defer wb.Parties.Mutex.Unlock()
+	for partyId, party := range wb.Parties.Map {
 		if show == partyId {
 			party.SendChat(buf)
 			setStatus("sent")
@@ -225,16 +227,19 @@ func handleInvite(wb *whitebox.WhiteBox, toks []string) {
 
 	// iterate parties
 	var party *whitebox.PartyLine
-	for id, p := range wb.Parties {
+	wb.Parties.Mutex.Lock()
+	for id, p := range wb.Parties.Map {
 		if strings.HasPrefix(id, partyPrefix) {
 			if party != nil {
 				setStatus(fmt.Sprintf(
 					"error multiple parties found for %s", partyPrefix))
+				wb.Parties.Mutex.Unlock()
 				return
 			}
 			party = p
 		}
 	}
+	wb.Parties.Mutex.Unlock()
 
 	if party == nil {
 		setStatus(fmt.Sprintf("error party not found for %s", partyPrefix))
@@ -243,7 +248,9 @@ func handleInvite(wb *whitebox.WhiteBox, toks []string) {
 
 	// iterate peers
 	var min *whitebox.MinPeer
-	for id, _ := range wb.PeerCache {
+	wb.PeerCache.Mutex.Lock()
+	wb.PeerCache.Mutex.Unlock()
+	for id, _ := range wb.PeerCache.Map {
 		front, err := wb.IdFront(id)
 		if err != nil {
 			setStatus("error decoding peer id")
@@ -255,6 +262,7 @@ func handleInvite(wb *whitebox.WhiteBox, toks []string) {
 			if min != nil {
 				setStatus(fmt.Sprintf(
 					"error multiple peers found for %s", userPrefix))
+				wb.PeerCache.Mutex.Unlock()
 				return
 			}
 
@@ -266,6 +274,7 @@ func handleInvite(wb *whitebox.WhiteBox, toks []string) {
 			}
 		}
 	}
+	wb.PeerCache.Mutex.Unlock()
 
 	if min == nil {
 		setStatus(fmt.Sprintf("error peer not found for %s", userPrefix))
@@ -298,16 +307,19 @@ func handleShow(wb *whitebox.WhiteBox, toks []string) {
 	partyPrefix := toks[1]
 
 	var partyId string
-	for id, _ := range wb.Parties {
+	wb.Parties.Mutex.Lock()
+	for id, _ := range wb.Parties.Map {
 		if strings.HasPrefix(id, partyPrefix) {
 			if partyId != "" {
 				setStatus(fmt.Sprintf(
 					"error multiple parties found for %s", partyPrefix))
+				wb.Parties.Mutex.Unlock()
 				return
 			}
 			partyId = id
 		}
 	}
+	wb.Parties.Mutex.Unlock()
 
 	if partyId == "" {
 		setStatus(fmt.Sprintf("error party not found for %s", partyPrefix))
@@ -350,23 +362,28 @@ func handleSend(wb *whitebox.WhiteBox, toks []string) {
 
 	// iterate parties
 	partyId := ""
-	for id, _ := range wb.Parties {
+	wb.Parties.Mutex.Lock()
+	for id, _ := range wb.Parties.Map {
 		if strings.HasPrefix(id, partyPrefix) {
 			if partyId != "" {
 				setStatus(fmt.Sprintf(
 					"error multiple parties found for %s", partyPrefix))
+				wb.Parties.Mutex.Unlock()
 				return
 			}
 			partyId = id
 		}
 	}
+	wb.Parties.Mutex.Unlock()
 
 	if partyId == "" {
 		setStatus(fmt.Sprintf("error party not found for %s", partyPrefix))
 		return
 	}
 
-	wb.Parties[partyId].SendChat(message)
+	wb.Parties.Mutex.Lock()
+	wb.Parties.Map[partyId].SendChat(message)
+	wb.Parties.Mutex.Unlock()
 	return
 }
 
@@ -388,10 +405,12 @@ func handleList(wb *whitebox.WhiteBox, toks []string) {
 
 	if show == "both" || show == "parties" {
 		chatStatus("      ==== PARTY LIST ====      ")
-		if len(wb.Parties) > 0 {
-			for id, _ := range wb.Parties {
+		if wb.Parties.Len() > 0 {
+			wb.Parties.Mutex.Lock()
+			for id, _ := range wb.Parties.Map {
 				chatStatus(fmt.Sprintf("%s", id))
 			}
+			wb.Parties.Mutex.Unlock()
 		} else {
 			chatStatus("           no parties           ")
 		}
@@ -399,10 +418,12 @@ func handleList(wb *whitebox.WhiteBox, toks []string) {
 
 	if show == "both" || show == "parties" {
 		chatStatus("  ==== ACCEPTANCE PENDING ====  ")
-		if len(wb.PendingInvites) > 0 {
-			for id, _ := range wb.PendingInvites {
+		if wb.PendingInvites.Len() > 0 {
+			wb.PendingInvites.Mutex.Lock()
+			for id, _ := range wb.PendingInvites.Map {
 				chatStatus(fmt.Sprintf("%s", id))
 			}
+			wb.PendingInvites.Mutex.Unlock()
 		} else {
 			chatStatus("           no invites           ")
 		}
@@ -419,7 +440,8 @@ func handleAccept(wb *whitebox.WhiteBox, toks []string) {
 
 	// iterate pending
 	partyId := ""
-	for id, _ := range wb.PendingInvites {
+	wb.PendingInvites.Mutex.Lock()
+	for id, _ := range wb.PendingInvites.Map {
 		if strings.HasPrefix(id, partyPrefix) {
 			if partyId != "" {
 				setStatus(fmt.Sprintf(
@@ -429,6 +451,7 @@ func handleAccept(wb *whitebox.WhiteBox, toks []string) {
 			partyId = id
 		}
 	}
+	wb.PendingInvites.Mutex.Unlock()
 
 	if partyId == "" {
 		setStatus(fmt.Sprintf("error invite not found for %s", partyPrefix))
@@ -448,28 +471,34 @@ func handleLeave(wb *whitebox.WhiteBox, toks []string) {
 
 	// iterate parties
 	partyId := ""
-	for id, _ := range wb.Parties {
+	wb.Parties.Mutex.Lock()
+	for id, _ := range wb.Parties.Map {
 		if strings.HasPrefix(id, partyPrefix) {
 			if partyId != "" {
 				setStatus(fmt.Sprintf(
 					"error multiple parties found for %s", partyPrefix))
+				wb.Parties.Mutex.Unlock()
 				return
 			}
 			partyId = id
 		}
 	}
+	wb.Parties.Mutex.Unlock()
 
 	if partyId == "" {
 		setStatus(fmt.Sprintf("error party not found for %s", partyPrefix))
 		return
 	}
 
-	wb.Parties[partyId].SendDisconnect()
+	wb.Parties.Mutex.Lock()
+	wb.Parties.Map[partyId].SendDisconnect()
+	wb.Parties.Mutex.Unlock()
 	setStatus("left the party " + partyId)
 }
 
 func handlePacks(wb *whitebox.WhiteBox, toks []string) {
-	for partyId, party := range wb.Parties {
+	wb.Parties.Mutex.Lock()
+	for partyId, party := range wb.Parties.Map {
 		chatStatus("== " + partyId + " ==")
 		for packHash, pack := range party.Packs {
 			line := "\"" + pack.Name + "\""
@@ -489,6 +518,7 @@ func handlePacks(wb *whitebox.WhiteBox, toks []string) {
 			}
 		}
 	}
+	wb.Parties.Mutex.Unlock()
 }
 
 func handleGet(wb *whitebox.WhiteBox, toks []string) {
@@ -502,16 +532,19 @@ func handleGet(wb *whitebox.WhiteBox, toks []string) {
 
 	// iterate parties
 	partyId := ""
-	for id, _ := range wb.Parties {
+	wb.Parties.Mutex.Lock()
+	for id, _ := range wb.Parties.Map {
 		if strings.HasPrefix(id, partyPrefix) {
 			if partyId != "" {
 				setStatus(fmt.Sprintf(
 					"error multiple parties found for %s", partyPrefix))
+				wb.Parties.Mutex.Unlock()
 				return
 			}
 			partyId = id
 		}
 	}
+	wb.Parties.Mutex.Unlock()
 
 	if partyId == "" {
 		setStatus(fmt.Sprintf("error party not found for %s", partyPrefix))
@@ -522,7 +555,11 @@ func handleGet(wb *whitebox.WhiteBox, toks []string) {
 
 	// find pack
 	packHash := ""
-	for hash, _ := range wb.Parties[partyId].Packs {
+	wb.Parties.Mutex.Lock()
+	party := wb.Parties.Map[partyId]
+	wb.Parties.Mutex.Unlock()
+
+	for hash, _ := range party.Packs {
 		if strings.HasPrefix(hash, hashPrefix) {
 			if packHash != "" {
 				setStatus(fmt.Sprintf(
@@ -538,7 +575,7 @@ func handleGet(wb *whitebox.WhiteBox, toks []string) {
 		return
 	}
 
-	wb.Parties[partyId].StartPack(packHash)
+	party.StartPack(packHash)
 }
 
 func handleHelp() {

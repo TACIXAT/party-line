@@ -8,6 +8,7 @@ import (
 	"github.com/kevinburke/nacl/sign"
 	"log"
 	"math/big"
+	"sync"
 	"time"
 )
 
@@ -16,6 +17,30 @@ type PeerEntry struct {
 	Distance *big.Int
 	Peer     *Peer
 	Seen     time.Time
+}
+
+type LockingPeerCacheMap struct {
+	Map   map[string]PeerCache
+	Mutex *sync.Mutex
+}
+
+func (lpcm LockingPeerCacheMap) Len() int {
+	lpcm.Mutex.Lock()
+	defer lpcm.Mutex.Unlock()
+	return len(lpcm.Map)
+}
+
+func (lpcm LockingPeerCacheMap) Get(key string) (PeerCache, bool) {
+	lpcm.Mutex.Lock()
+	defer lpcm.Mutex.Unlock()
+	pc, ok := lpcm.Map[key]
+	return pc, ok
+}
+
+func (lpcm LockingPeerCacheMap) Set(key string, value PeerCache) {
+	lpcm.Mutex.Lock()
+	defer lpcm.Mutex.Unlock()
+	lpcm.Map[key] = value
 }
 
 type PeerCache struct {
@@ -131,21 +156,18 @@ func (wb *WhiteBox) havePeers() bool {
 }
 
 func (wb *WhiteBox) cacheMin(min MinPeer) {
-	cache := wb.PeerCache[min.Id()]
-	wb.PeerCache[min.Id()] = cache
+	cache, _ := wb.PeerCache.Get(min.Id())
+	wb.PeerCache.Set(min.Id(), cache)
 }
 
 func (wb *WhiteBox) addPeer(peer *Peer) {
-	cache, seen := wb.PeerCache[peer.Id()]
+	cache, seen := wb.PeerCache.Get(peer.Id())
 	if seen && cache.Added {
 		return
 	}
 
 	cache.Added = true
-	wb.PeerCache[peer.Id()] = cache
-	// DATA RACE: client_test:18 (checkBS)
-	// DATA RACE: client_test:21 (checkBS)
-	// DATA RACE: processors:182 (processVerify)
+	wb.PeerCache.Set(peer.Id(), cache)
 
 	idBytes := peer.SignPub
 	insertId := new(big.Int)

@@ -31,8 +31,32 @@ type VerifiedBlock struct {
 	Hash         string
 }
 
+type LockingMinList struct {
+	Map   map[string]int
+	Mutex *sync.Mutex
+}
+
+func (lml LockingMinList) Len() int {
+	lml.Mutex.Lock()
+	defer lml.Mutex.Unlock()
+	return len(lml.Map)
+}
+
+func (lml LockingMinList) Set(key string, value int) {
+	lml.Mutex.Lock()
+	defer lml.Mutex.Unlock()
+	lml.Map[key] = value
+}
+
+func (lml LockingMinList) Get(key string) (int, bool) {
+	lml.Mutex.Lock()
+	defer lml.Mutex.Unlock()
+	value, ok := lml.Map[key]
+	return value, ok
+}
+
 type PartyLine struct {
-	MinList   map[string]int
+	MinList   LockingMinList
 	Id        string
 	SeenChats map[string]bool  `json:"-"`
 	Packs     map[string]*Pack `json:"-"`
@@ -99,10 +123,12 @@ func modFloor(i, m int) int {
 }
 
 func (party *PartyLine) getNeighbors() map[string]bool {
-	sortedIds := make([]string, 0, len(party.MinList))
-	for id, _ := range party.MinList {
+	sortedIds := make([]string, 0, party.MinList.Len())
+	party.MinList.Mutex.Lock()
+	for id, _ := range party.MinList.Map {
 		sortedIds = append(sortedIds, id)
 	}
+	party.MinList.Mutex.Unlock()
 	sort.Strings(sortedIds)
 
 	var idx int = -1
@@ -140,17 +166,19 @@ func (party *PartyLine) SendInvite(min *MinPeer) {
 	// keep message small so we don't limit party size
 	// hopefully this doesn't fuck up delivery
 	var sendParty *PartyLine = party
-	if len(party.MinList) > 20 {
+	if party.MinList.Len() > 20 {
 		sendParty = new(PartyLine)
 		sendParty.Id = party.Id
 		idx := 0
-		for id, _ := range party.MinList {
-			sendParty.MinList[id] = 0
+		party.MinList.Mutex.Lock()
+		for id, _ := range party.MinList.Map {
+			sendParty.MinList.Set(id, 0)
 			idx++
 			if idx > 20 {
 				break
 			}
 		}
+		party.MinList.Mutex.Unlock()
 	}
 
 	jsonInvite, err := json.Marshal(sendParty)
@@ -198,7 +226,9 @@ func (party *PartyLine) SendAnnounce() {
 		return
 	}
 
-	for idMin, _ := range party.MinList {
+	party.MinList.Mutex.Lock()
+	defer party.MinList.Mutex.Unlock()
+	for idMin, _ := range party.MinList.Map {
 		min, err := party.WhiteBox.IdToMin(idMin)
 		if err != nil {
 			party.WhiteBox.setStatus(err.Error())
@@ -464,10 +494,12 @@ func (party *PartyLine) ProcessDisconnect(partyEnv *PartyEnvelope) {
 		return
 	}
 
-	_, seen := party.MinList[partyDisconnect.PeerId]
+	_, seen := party.MinList.Get(partyDisconnect.PeerId)
 
 	if seen {
-		delete(party.MinList, partyDisconnect.PeerId)
+		party.MinList.Mutex.Lock()
+		delete(party.MinList.Map, partyDisconnect.PeerId)
+		party.MinList.Mutex.Unlock()
 		party.sendToNeighbors("disconnect", signedPartyDisconnect)
 	}
 }
@@ -502,11 +534,10 @@ func (party *PartyLine) ProcessAnnounce(partyEnv *PartyEnvelope) {
 		return
 	}
 
-	_, seen := party.MinList[partyAnnounce.PeerId]
-	// DATA RACE: with client_test:69 (checkAccept)
+	_, seen := party.MinList.Get(partyAnnounce.PeerId)
 
 	if !seen {
-		party.MinList[partyAnnounce.PeerId] = 0
+		party.MinList.Set(partyAnnounce.PeerId, 0)
 		party.sendToNeighbors("announce", signedPartyAnnounce)
 	}
 }
@@ -562,8 +593,7 @@ func (wb *WhiteBox) processParty(env *Envelope) {
 	// chatStatus(fmt.Sprintf("got %s", partyEnv.Type))
 
 	if env.From == partyEnv.From && partyEnv.Type != "disconnect" {
-		party.MinList[partyEnv.From] = 0
-		// DATA RACE: with party:102 (getNeighbors)
+		party.MinList.Set(partyEnv.From, 0)
 	}
 }
 
@@ -599,7 +629,9 @@ func (wb *WhiteBox) processInvite(env *Envelope) {
 	party.SeenChats = make(map[string]bool)
 	party.Packs = make(map[string]*Pack)
 
-	_, inPending := wb.PendingInvites[party.Id]
+	wb.PendingInvites.Mutex.Lock()
+	_, inPending := wb.PendingInvites.Map[party.Id]
+	wb.PendingInvites.Mutex.Unlock()
 
 	wb.Parties.Mutex.Lock()
 	_, inParties := wb.Parties.Map[party.Id]
@@ -610,15 +642,17 @@ func (wb *WhiteBox) processInvite(env *Envelope) {
 		return
 	}
 
-	wb.PendingInvites[party.Id] = party
-	// DATA RACE: party:632 (PendingInvites)
-	// DATA RACE: client_test:62 (checkInvite)
+	wb.PendingInvites.Mutex.Lock()
+	wb.PendingInvites.Map[party.Id] = party
+	wb.PendingInvites.Mutex.Unlock()
 
 	party.WhiteBox.setStatus(fmt.Sprintf("invite received for %s", party.Id))
 }
 
 func (wb *WhiteBox) AcceptInvite(partyId string) {
-	party := wb.PendingInvites[partyId]
+	wb.PendingInvites.Mutex.Lock()
+	party := wb.PendingInvites.Map[partyId]
+	wb.PendingInvites.Mutex.Unlock()
 
 	wb.Parties.Mutex.Lock()
 	_, joined := wb.Parties.Map[partyId]
@@ -630,7 +664,9 @@ func (wb *WhiteBox) AcceptInvite(partyId string) {
 		return
 	}
 
-	delete(wb.PendingInvites, partyId)
+	wb.PendingInvites.Mutex.Lock()
+	delete(wb.PendingInvites.Map, partyId)
+	wb.PendingInvites.Mutex.Unlock()
 
 	party.SendAnnounce()
 
@@ -667,6 +703,7 @@ func (party *PartyLine) StartPack(packHash string) {
 	}
 
 	if strings.Contains(pack.Name, "..") {
+		// DATA RACE: with unknown:N (unknown)
 		party.WhiteBox.setStatus("error pack name potential directory traversal")
 		return
 	}
@@ -1325,12 +1362,13 @@ func (wb *WhiteBox) PartyStart(name string) string {
 		return ""
 	}
 
-	party.MinList = make(map[string]int)
+	party.MinList.Map = make(map[string]int)
+	party.MinList.Mutex = new(sync.Mutex)
 	party.SeenChats = make(map[string]bool)
 	party.Packs = make(map[string]*Pack)
 	party.WhiteBox = wb
 
-	party.MinList[party.WhiteBox.PeerSelf.Id()] = 0
+	party.MinList.Set(party.WhiteBox.PeerSelf.Id(), 0)
 
 	wb.Parties.Mutex.Lock()
 	wb.Parties.Map[party.Id] = party

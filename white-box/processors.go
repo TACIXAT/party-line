@@ -204,7 +204,7 @@ func (wb *WhiteBox) processAnnounce(env *Envelope) {
 		return
 	}
 
-	cache, seen := wb.PeerCache[peer.Id()]
+	cache, seen := wb.PeerCache.Get(peer.Id())
 	if !seen || !cache.Added {
 		peerConn, err := net.Dial("udp", peer.Address)
 		if err != nil {
@@ -219,9 +219,9 @@ func (wb *WhiteBox) processAnnounce(env *Envelope) {
 
 	if !seen || !cache.Announced {
 		wb.flood(env)
-		cache = wb.PeerCache[peer.Id()]
+		cache, _ = wb.PeerCache.Get(peer.Id())
 		cache.Announced = true
-		wb.PeerCache[peer.Id()] = cache
+		wb.PeerCache.Set(peer.Id(), cache)
 	}
 }
 
@@ -259,7 +259,7 @@ func (wb *WhiteBox) processSuggestionRequest(env *Envelope) {
 
 	wb.sendSuggestions(peer, env.Data)
 
-	cache, seen := wb.PeerCache[peer.Id()]
+	cache, seen := wb.PeerCache.Get(peer.Id())
 	if !seen || !cache.Added {
 		wb.addPeer(peer)
 	}
@@ -290,7 +290,7 @@ func (wb *WhiteBox) processSuggestions(env *Envelope) {
 	peer := new(Peer)
 	*peer = suggestions.Peer
 
-	cache, seen := wb.PeerCache[peer.Id()]
+	cache, seen := wb.PeerCache.Get(peer.Id())
 	if !seen || !cache.Added {
 		peerConn, err := net.Dial("udp", peer.Address)
 		if err != nil {
@@ -304,7 +304,7 @@ func (wb *WhiteBox) processSuggestions(env *Envelope) {
 	}
 
 	for _, newPeer := range suggestions.SuggestedPeers {
-		cache, seen := wb.PeerCache[newPeer.Id()]
+		cache, seen := wb.PeerCache.Get(newPeer.Id())
 		if !seen && !cache.Added && wb.wouldAddPeer(&newPeer) {
 			peerConn, err := net.Dial("udp", newPeer.Address)
 			if err != nil {
@@ -347,10 +347,10 @@ func (wb *WhiteBox) processDisconnect(env *Envelope) {
 
 	wb.removePeer(idShort)
 
-	cache, seen := wb.PeerCache[env.From]
+	cache, seen := wb.PeerCache.Get(env.From)
 	if !seen || !cache.Disconnected {
 		cache.Disconnected = true
-		wb.PeerCache[env.From] = cache
+		wb.PeerCache.Set(env.From, cache)
 
 		wb.flood(env)
 	}

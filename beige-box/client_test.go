@@ -14,12 +14,11 @@ import (
 )
 
 func checkBS(wb0, wb1 *whitebox.WhiteBox, successChan chan bool) {
-	cache0, seen0 := wb0.PeerCache[wb1.PeerSelf.Id()]
-	cache1, seen1 := wb1.PeerCache[wb0.PeerSelf.Id()]
+	cache0, seen0 := wb0.PeerCache.Get(wb1.PeerSelf.Id())
+	cache1, seen1 := wb1.PeerCache.Get(wb0.PeerSelf.Id())
 	for !cache0.Added || !seen0 || !cache1.Added || !seen1 {
-		cache0, seen0 = wb0.PeerCache[wb1.PeerSelf.Id()]
-		// DATA RACE: with unknown:N (unknown)
-		cache1, seen1 = wb1.PeerCache[wb0.PeerSelf.Id()]
+		cache0, seen0 = wb0.PeerCache.Get(wb1.PeerSelf.Id())
+		cache1, seen1 = wb1.PeerCache.Get(wb0.PeerSelf.Id())
 		time.Sleep(10 * time.Millisecond)
 	}
 	successChan <- true
@@ -60,14 +59,14 @@ func testChat(wb0, wb1 *whitebox.WhiteBox) error {
 }
 
 func checkInvite(wb *whitebox.WhiteBox, successChan chan bool) {
-	for len(wb.PendingInvites) == 0 {
+	for wb.PendingInvites.Len() == 0 {
 		time.Sleep(10 * time.Millisecond)
 	}
 	successChan <- true
 }
 
 func checkAccept(party *whitebox.PartyLine, successChan chan bool) {
-	for len(party.MinList) < 2 {
+	for party.MinList.Len() < 2 {
 		time.Sleep(10 * time.Millisecond)
 	}
 	successChan <- true
@@ -234,6 +233,7 @@ func testGetPack(wb *whitebox.WhiteBox, partyId string) error {
 	var packHash string
 	var pack *whitebox.Pack
 	for packHash, pack = range party.Packs {
+		// DATA RACE: with unknown:N (unknown)
 		break
 	}
 
@@ -242,6 +242,7 @@ func testGetPack(wb *whitebox.WhiteBox, partyId string) error {
 	}
 
 	if pack.State != whitebox.AVAILABLE {
+		// DATA RACE: with unknown:N (unknown)
 		return errors.New("Pack not available.")
 	}
 
@@ -267,21 +268,17 @@ func checkPartyDisconnect(wb0, wb1 *whitebox.WhiteBox, successChan chan bool) {
 	}
 	wb1.Parties.Mutex.Unlock()
 
-	wb0.Parties.Mutex.Lock()
-	for len(wb0.Parties.Map) > 0 || len(party.MinList) > 1 {
-		wb0.Parties.Mutex.Unlock()
+	for wb0.Parties.Len() > 0 || party.MinList.Len() > 1 {
 		time.Sleep(10 * time.Millisecond)
-		wb0.Parties.Mutex.Lock()
 	}
-	wb0.Parties.Mutex.Unlock()
 
 	successChan <- true
 }
 
 func checkDisconnect(wb0, wb1 *whitebox.WhiteBox, successChan chan bool) {
-	cache, _ := wb1.PeerCache[wb0.PeerSelf.Id()]
+	cache, _ := wb1.PeerCache.Get(wb0.PeerSelf.Id())
 	for !cache.Disconnected {
-		cache, _ = wb1.PeerCache[wb0.PeerSelf.Id()]
+		cache, _ = wb1.PeerCache.Get(wb0.PeerSelf.Id())
 		time.Sleep(10 * time.Millisecond)
 	}
 

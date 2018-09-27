@@ -28,6 +28,12 @@ type LockingPartyMap struct {
 	Mutex *sync.Mutex
 }
 
+func (lpm LockingPartyMap) Len() int {
+	lpm.Mutex.Lock()
+	defer lpm.Mutex.Unlock()
+	return len(lpm.Map)
+}
+
 type WhiteBox struct {
 	BsId              string
 	ChatChannel       chan Chat
@@ -39,8 +45,8 @@ type WhiteBox struct {
 	EmptyList         bool
 	SeenChats         map[string]bool
 	Parties           LockingPartyMap
-	PendingInvites    map[string]*PartyLine
-	PeerCache         map[string]PeerCache
+	PendingInvites    LockingPartyMap
+	PeerCache         LockingPeerCacheMap
 	SharedDir         string
 	FreshRequests     map[string]*Since
 	RequestChan       chan *PartyRequest
@@ -70,11 +76,14 @@ func New(dir, addr, port string) *WhiteBox {
 
 	wb.BsId = fmt.Sprintf("%s/%s/%s", addr, port, wb.PeerSelf.ShortId())
 	wb.EmptyList = true
-	wb.PendingInvites = make(map[string]*PartyLine)
-	wb.PeerCache = make(map[string]PeerCache)
+	wb.PeerCache.Map = make(map[string]PeerCache)
+	wb.PeerCache.Mutex = new(sync.Mutex)
 
 	wb.Parties.Map = make(map[string]*PartyLine)
 	wb.Parties.Mutex = new(sync.Mutex)
+
+	wb.PendingInvites.Map = make(map[string]*PartyLine)
+	wb.PendingInvites.Mutex = new(sync.Mutex)
 
 	wb.FreshRequests = make(map[string]*Since)
 	wb.RequestChan = make(chan *PartyRequest, 100)
