@@ -60,6 +60,17 @@ const (
 	COMPLETE
 )
 
+type LockingPack struct {
+	Pack  *Pack
+	Mutex *sync.Mutex
+}
+
+func (lp LockingPack) State() int {
+	lp.Mutex.Lock()
+	defer lp.Mutex.Unlock()
+	return lp.Pack.State
+}
+
 type Pack struct {
 	Name     string
 	Files    []*PackFileInfo
@@ -589,7 +600,16 @@ func (wb *WhiteBox) buildPack(partyId string, path string, targetFile *os.File) 
 	sort.Sort(ByFileName(pack.Files))
 	packHash := sha256Pack(pack)
 
-	wb.Parties.Map[partyId].Packs[packHash] = pack
+	party := wb.Parties.Map[partyId]
+
+	party.PacksLock.Lock()
+	var lockingPack LockingPack
+	lockingPack.Mutex = new(sync.Mutex)
+	lockingPack.Mutex.Lock()
+	lockingPack.Pack = pack
+	lockingPack.Mutex.Unlock()
+	party.Packs[packHash] = lockingPack
+	party.PacksLock.Unlock()
 }
 
 func (wb *WhiteBox) walker(path string, info os.FileInfo, err error) error {

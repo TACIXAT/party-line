@@ -58,9 +58,10 @@ func (lml LockingMinList) Get(key string) (int, bool) {
 type PartyLine struct {
 	MinList   LockingMinList
 	Id        string
-	SeenChats map[string]bool  `json:"-"`
-	Packs     map[string]*Pack `json:"-"`
-	WhiteBox  *WhiteBox        `json:"-"`
+	SeenChats map[string]bool        `json:"-"`
+	Packs     map[string]LockingPack `json:"-"`
+	PacksLock *sync.Mutex            `json:"-"`
+	WhiteBox  *WhiteBox              `json:"-"`
 }
 
 type PartyEnvelope struct {
@@ -383,31 +384,41 @@ func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
 		return
 	}
 
-	pack, ok := party.Packs[hash]
+	party.PacksLock.Lock()
+	lockingPack, ok := party.Packs[hash]
+	party.PacksLock.Unlock()
+
 	if !ok {
 		newPack.State = AVAILABLE
-		party.Packs[hash] = newPack
+
+		lockingPack.Mutex = new(sync.Mutex)
+		lockingPack.Mutex.Lock()
+		defer lockingPack.Mutex.Unlock()
+		lockingPack.Pack = newPack
+
+		party.PacksLock.Lock()
+		party.Packs[hash] = lockingPack
+		party.PacksLock.Unlock()
 		// DATA RACE: with client_test:235 (testGetPack)
 		// DATA RACE: with client_test:36 (checkPack)
-		pack = newPack
 
-		pack.FileLock.Lock()
-		for _, file := range pack.Files {
+		lockingPack.Pack.FileLock.Lock()
+		for _, file := range lockingPack.Pack.Files {
 			file.BlockMap = make(map[string]BlockInfo)
 			file.BlockLookup = make(map[uint64]string)
 			file.Coverage = make([]uint64, 0)
 			file.Path = ""
 		}
-		pack.FileLock.Unlock()
+		lockingPack.Pack.FileLock.Unlock()
 	}
 
 	adTime := partyAdvertisement.Time
-	peerTime, ok := pack.Peers[min.Id()]
+	peerTime, ok := lockingPack.Pack.Peers[min.Id()]
 	if !ok || peerTime.Before(adTime) {
 		if adTime.Sub(peerTime) > 30*time.Second {
 			party.sendToNeighbors("ad", signedPartyAdvertisement)
 		}
-		pack.Peers[min.Id()] = adTime
+		lockingPack.Pack.Peers[min.Id()] = adTime
 	}
 }
 
@@ -627,7 +638,8 @@ func (wb *WhiteBox) processInvite(env *Envelope) {
 
 	party.WhiteBox = wb
 	party.SeenChats = make(map[string]bool)
-	party.Packs = make(map[string]*Pack)
+	party.Packs = make(map[string]LockingPack)
+	party.PacksLock = new(sync.Mutex)
 
 	wb.PendingInvites.Mutex.Lock()
 	_, inPending := wb.PendingInvites.Map[party.Id]
@@ -678,19 +690,31 @@ func (wb *WhiteBox) AcceptInvite(partyId string) {
 }
 
 func (party *PartyLine) AdvertisePacks() {
-	for packSha256, pack := range party.Packs {
-		if pack.State == COMPLETE {
-			party.SendAdvertisement(packSha256, pack)
+	party.PacksLock.Lock()
+	defer party.PacksLock.Unlock()
+	for packSha256, lockingPack := range party.Packs {
+		lockingPack.Mutex.Lock()
+		if lockingPack.Pack.State == COMPLETE {
+			party.SendAdvertisement(packSha256, lockingPack.Pack)
 		}
+		lockingPack.Mutex.Unlock()
 	}
 }
 
 func (party *PartyLine) ClearPacks() {
-	party.Packs = make(map[string]*Pack)
+	party.PacksLock.Lock()
+	defer party.PacksLock.Unlock()
+	party.Packs = make(map[string]LockingPack)
 }
 
 func (party *PartyLine) StartPack(packHash string) {
-	pack := party.Packs[packHash]
+	party.PacksLock.Lock()
+	lockingPack := party.Packs[packHash]
+	party.PacksLock.Unlock()
+
+	lockingPack.Mutex.Lock()
+	defer lockingPack.Mutex.Unlock()
+	pack := lockingPack.Pack
 
 	// party ids are alphanum
 	partyDir := filepath.Join(party.WhiteBox.SharedDir, party.Id)
@@ -797,7 +821,13 @@ func (party *PartyLine) ProcessRequest(partyEnv *PartyEnvelope) {
 	since.Received = now
 	party.WhiteBox.FreshRequests[id] = since
 
-	pack, ok := party.Packs[partyRequest.PackHash]
+	party.PacksLock.Lock()
+	lockingPack, ok := party.Packs[partyRequest.PackHash]
+	party.PacksLock.Unlock()
+
+	lockingPack.Mutex.Lock()
+	defer lockingPack.Mutex.Unlock()
+	pack := lockingPack.Pack
 	if !ok || pack.State == AVAILABLE {
 		// we don't have the pack
 		return
@@ -939,13 +969,19 @@ func (party *PartyLine) ProcessFulfillment(partyEnv *PartyEnvelope) {
 		return
 	}
 
-	pack, ok := party.Packs[partyFulfillment.PackHash]
+	party.PacksLock.Lock()
+	lockingPack, ok := party.Packs[partyFulfillment.PackHash]
+	party.PacksLock.Unlock()
+
+	lockingPack.Mutex.Lock()
+	pack := lockingPack.Pack
 	if !ok || pack.State != ACTIVE {
 		// we aren't downloading the pack
 		return
 	}
 
 	packFileInfo := pack.GetFileInfo(partyFulfillment.FileHash)
+	lockingPack.Mutex.Unlock()
 	if packFileInfo == nil {
 		// we don't have the file
 		return
@@ -1056,8 +1092,16 @@ func (party *PartyLine) chooseBlock(request *PartyRequest) *Block {
 	}
 
 	blockIndices := make([]uint64, 0)
-	pack := party.Packs[request.PackHash]
+	party.PacksLock.Lock()
+	lockingPack := party.Packs[request.PackHash]
+	party.PacksLock.Unlock()
+
+	lockingPack.Mutex.Lock()
+	pack := lockingPack.Pack
+
 	packFileInfo := pack.GetFileInfo(request.FileHash)
+	lockingPack.Mutex.Unlock()
+
 	selfCoverage := packFileInfo.Coverage
 
 	// xor with self coverage to find candidates to send
@@ -1130,12 +1174,17 @@ func (wb *WhiteBox) FileRequester() {
 	for {
 		wb.Parties.Mutex.Lock()
 		for _, party := range wb.Parties.Map {
-			for packHash, pack := range party.Packs {
+			party.PacksLock.Lock()
+			for packHash, lockingPack := range party.Packs {
+				lockingPack.Mutex.Lock()
+				pack := lockingPack.Pack
 				if pack.State == ACTIVE {
 					party.SendRequests(packHash, pack)
 					log.Println("(dbg) sent requests")
 				}
+				lockingPack.Mutex.Unlock()
 			}
+			party.PacksLock.Unlock()
 		}
 		wb.Parties.Mutex.Unlock()
 		time.Sleep(5 * time.Second)
@@ -1365,7 +1414,8 @@ func (wb *WhiteBox) PartyStart(name string) string {
 	party.MinList.Map = make(map[string]int)
 	party.MinList.Mutex = new(sync.Mutex)
 	party.SeenChats = make(map[string]bool)
-	party.Packs = make(map[string]*Pack)
+	party.Packs = make(map[string]LockingPack)
+	party.PacksLock = new(sync.Mutex)
 	party.WhiteBox = wb
 
 	party.MinList.Set(party.WhiteBox.PeerSelf.Id(), 0)

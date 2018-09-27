@@ -500,7 +500,10 @@ func handlePacks(wb *whitebox.WhiteBox, toks []string) {
 	wb.Parties.Mutex.Lock()
 	for partyId, party := range wb.Parties.Map {
 		chatStatus("== " + partyId + " ==")
-		for packHash, pack := range party.Packs {
+		party.PacksLock.Lock()
+		for packHash, lockingPack := range party.Packs {
+			lockingPack.Mutex.Lock()
+			pack := lockingPack.Pack
 			line := "\"" + pack.Name + "\""
 			// TODO: change to count in last TIME
 			line += " (" + strconv.FormatInt(int64(len(pack.Peers)), 10) + ")"
@@ -512,11 +515,15 @@ func handlePacks(wb *whitebox.WhiteBox, toks []string) {
 			chatStatus("PACK: " + packHash)
 			chatStatus(line)
 
+			pack.FileLock.Lock() // TODO: is file lock still necessary now that we have pack lock?
 			for _, packFileInfo := range pack.Files {
 				chatStatus("  FILE: " + packFileInfo.Hash)
 				chatStatus("  \"" + packFileInfo.Name + "\"")
 			}
+			pack.FileLock.Unlock()
+			lockingPack.Mutex.Unlock()
 		}
+		party.PacksLock.Unlock()
 	}
 	wb.Parties.Mutex.Unlock()
 }
@@ -559,16 +566,19 @@ func handleGet(wb *whitebox.WhiteBox, toks []string) {
 	party := wb.Parties.Map[partyId]
 	wb.Parties.Mutex.Unlock()
 
+	party.PacksLock.Lock()
 	for hash, _ := range party.Packs {
 		if strings.HasPrefix(hash, hashPrefix) {
 			if packHash != "" {
 				setStatus(fmt.Sprintf(
 					"error multiple packs found for %s", hashPrefix))
+				party.PacksLock.Unlock()
 				return
 			}
 			packHash = hash
 		}
 	}
+	party.PacksLock.Unlock()
 
 	if packHash == "" {
 		setStatus(fmt.Sprintf("error pack not found for %s", hashPrefix))

@@ -129,11 +129,18 @@ func testPartyChat(wb0, wb1 *whitebox.WhiteBox, partyId string) error {
 	return nil
 }
 
+func packsLen(party *whitebox.PartyLine) int {
+	party.PacksLock.Lock()
+	defer party.PacksLock.Unlock()
+	return len(party.Packs)
+}
+
 func checkPack(wb *whitebox.WhiteBox, partyId string, successChan chan bool) {
 	wb.Parties.Mutex.Lock()
 	party := wb.Parties.Map[partyId]
 	wb.Parties.Mutex.Unlock()
-	for len(party.Packs) == 0 {
+
+	for packsLen(party) == 0 {
 		time.Sleep(10 * time.Millisecond)
 	}
 
@@ -217,9 +224,9 @@ func testScanPack(wb0, wb1 *whitebox.WhiteBox, partyId string) error {
 func checkDownload(
 	wb *whitebox.WhiteBox, partyId, packHash string, successChan chan bool) {
 	wb.Parties.Mutex.Lock()
-	pack := wb.Parties.Map[partyId].Packs[packHash]
+	lockingPack := wb.Parties.Map[partyId].Packs[packHash]
 	wb.Parties.Mutex.Unlock()
-	for pack.State != whitebox.COMPLETE {
+	for lockingPack.State() != whitebox.COMPLETE {
 		time.Sleep(10 * time.Millisecond)
 	}
 	successChan <- true
@@ -231,12 +238,16 @@ func testGetPack(wb *whitebox.WhiteBox, partyId string) error {
 	wb.Parties.Mutex.Unlock()
 
 	var packHash string
-	var pack *whitebox.Pack
-	for packHash, pack = range party.Packs {
+	var lockingPack whitebox.LockingPack
+	party.PacksLock.Lock()
+	for packHash, lockingPack = range party.Packs {
 		// DATA RACE: with unknown:N (unknown)
 		break
 	}
+	party.PacksLock.Unlock()
 
+	lockingPack.Mutex.Lock()
+	pack := lockingPack.Pack
 	if pack == nil {
 		return errors.New("Pack not found.")
 	}
@@ -245,6 +256,7 @@ func testGetPack(wb *whitebox.WhiteBox, partyId string) error {
 		// DATA RACE: with unknown:N (unknown)
 		return errors.New("Pack not available.")
 	}
+	lockingPack.Mutex.Unlock()
 
 	party.StartPack(packHash)
 
