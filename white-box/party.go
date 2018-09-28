@@ -391,7 +391,7 @@ func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
 	if !ok {
 		newPack.State = AVAILABLE
 
-		lockingPack.Mutex.Mutex = new(sync.Mutex)
+		lockingPack.Mutex = new(sync.Mutex)
 		lockingPack.Mutex.Lock()
 		defer lockingPack.Mutex.Unlock()
 		lockingPack.Pack = newPack

@@ -13,8 +13,7 @@ import (
 /*
 TODO:
 	write client to client tests
-	lock for sendpings, removestalepeers
-	more deadlocks?
+	disconnect timeout on race test (deadlock?)
 
 	scrolling
 	cursor on input
