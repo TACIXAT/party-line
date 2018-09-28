@@ -12,9 +12,10 @@ import (
 
 /*
 TODO:
-	write client to client tests
-	disconnect timeout on race test (deadlock?)
-
+	figure out smooth update process
+	use releases
+	perm nodes
+	
 	scrolling
 	cursor on input
 	better keys
@@ -30,10 +31,7 @@ TODO:
 	increase block size
 
 	make decent public interface (locking and shit)
-
-	use releases
 	bs shortener
-	perm nodes
 */
 
 var chatChan chan string
