@@ -32,7 +32,7 @@ func testBootstrap(wb0, wb1 *whitebox.WhiteBox, port1Str string) error {
 	select {
 	case <-successChan:
 		// nop
-	case <-time.After(1000 * time.Millisecond):
+	case <-time.After(60 * time.Second):
 		return errors.New("Failed to bootstrap (timeout).")
 	}
 
@@ -44,14 +44,14 @@ func testChat(wb0, wb1 *whitebox.WhiteBox) error {
 	select {
 	case <-wb1.ChatChannel:
 		// nop
-	case <-time.After(1000 * time.Millisecond):
+	case <-time.After(60 * time.Second):
 		return errors.New("No chat received by wb1 (timeout).")
 	}
 
 	select {
 	case <-wb0.ChatChannel:
 		// nop
-	case <-time.After(1000 * time.Millisecond):
+	case <-time.After(60 * time.Second):
 		return errors.New("No chat received by wb0 (timeout).")
 	}
 
@@ -86,7 +86,7 @@ func testPartyInvite(wb0, wb1 *whitebox.WhiteBox) (string, error) {
 	select {
 	case <-successChan:
 		// nop
-	case <-time.After(1000 * time.Millisecond):
+	case <-time.After(60 * time.Second):
 		return "", errors.New("No invite received (timeout).")
 	}
 
@@ -95,7 +95,7 @@ func testPartyInvite(wb0, wb1 *whitebox.WhiteBox) (string, error) {
 	select {
 	case <-successChan:
 		// nop
-	case <-time.After(1000 * time.Millisecond):
+	case <-time.After(60 * time.Second):
 		return "", errors.New("No acceptance received (timeout).")
 	}
 
@@ -113,7 +113,7 @@ func testPartyChat(wb0, wb1 *whitebox.WhiteBox, partyId string) error {
 		if chat.Channel != partyId {
 			return errors.New("Bad channel for chat received by wb1.")
 		}
-	case <-time.After(1000 * time.Millisecond):
+	case <-time.After(60 * time.Second):
 		return errors.New("No chat received by wb1 (timeout).")
 	}
 
@@ -122,7 +122,7 @@ func testPartyChat(wb0, wb1 *whitebox.WhiteBox, partyId string) error {
 		if chat.Channel != partyId {
 			return errors.New("Bad channel for chat received by wb0.")
 		}
-	case <-time.After(1000 * time.Millisecond):
+	case <-time.After(60 * time.Second):
 		return errors.New("No chat received by wb0 (timeout).")
 	}
 
@@ -206,7 +206,7 @@ func testScanPack(wb0, wb1 *whitebox.WhiteBox, partyId string) error {
 	select {
 	case <-successChan:
 		// nop
-	case <-time.After(1000 * time.Millisecond):
+	case <-time.After(60 * time.Second):
 		return errors.New("No pack created (timeout).")
 	}
 
@@ -214,11 +214,18 @@ func testScanPack(wb0, wb1 *whitebox.WhiteBox, partyId string) error {
 	select {
 	case <-successChan:
 		// nop
-	case <-time.After(1000 * time.Millisecond):
+	case <-time.After(60 * time.Second):
 		return errors.New("No pack received (timeout).")
 	}
 
 	return nil
+}
+
+func checkState(wb *whitebox.WhiteBox, partyId, packHash string) {
+	wb.Parties.Mutex.Lock()
+	lockingPack := wb.Parties.Map[partyId].Packs[packHash]
+	wb.Parties.Mutex.Unlock()
+	log.Printf("STATE: %d", lockingPack.State())
 }
 
 func checkDownload(
@@ -226,6 +233,8 @@ func checkDownload(
 	wb.Parties.Mutex.Lock()
 	lockingPack := wb.Parties.Map[partyId].Packs[packHash]
 	wb.Parties.Mutex.Unlock()
+	checkState(wb, partyId, packHash)
+	// not working ???
 	for lockingPack.State() != whitebox.COMPLETE {
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -257,15 +266,18 @@ func testGetPack(wb *whitebox.WhiteBox, partyId string) error {
 		return errors.New("Pack not available.")
 	}
 	lockingPack.Mutex.Unlock()
+	checkState(wb, partyId, packHash)
 
 	party.StartPack(packHash)
 
 	successChan := make(chan bool)
 	go checkDownload(wb, partyId, packHash, successChan)
+	checkState(wb, partyId, packHash)
 	select {
 	case <-successChan:
 		// nop
-	case <-time.After(20000 * time.Millisecond):
+	case <-time.After(60 * time.Second):
+		checkState(wb, partyId, packHash)
 		return errors.New("No pack downloaded (timeout).")
 	}
 
@@ -305,7 +317,7 @@ func testDisconnect(wb0, wb1 *whitebox.WhiteBox) error {
 	select {
 	case <-successChan:
 		// nop
-	case <-time.After(1000 * time.Millisecond):
+	case <-time.After(60 * time.Second):
 		return errors.New("No party disconnect (timeout).")
 	}
 
@@ -314,7 +326,7 @@ func testDisconnect(wb0, wb1 *whitebox.WhiteBox) error {
 	select {
 	case <-successChan:
 		// nop
-	case <-time.After(1000 * time.Millisecond):
+	case <-time.After(60 * time.Second):
 		return errors.New("No disconnect (timeout).")
 	}
 
@@ -396,8 +408,7 @@ func TestClientInteractions(t *testing.T) {
 	}
 
 cleanup:
-	os.RemoveAll(dir0)
-	os.RemoveAll(dir1)
-	time.Sleep(5 * time.Second)
+	// os.RemoveAll(dir0)
+	// os.RemoveAll(dir1)
 	return
 }

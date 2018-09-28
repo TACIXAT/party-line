@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -60,14 +61,32 @@ const (
 	COMPLETE
 )
 
-type LockingPack struct {
-	Pack  *Pack
+type LogMutex struct {
 	Mutex *sync.Mutex
 }
 
+func (lm LogMutex) Lock() {
+	log.Println("locked at")
+	log.Printf(string(debug.Stack()))
+	log.Println()
+	lm.Mutex.Lock()
+}
+
+func (lm LogMutex) Unlock() {
+	log.Println("unlocked at")
+	log.Printf(string(debug.Stack()))
+	log.Println()
+	lm.Mutex.Unlock()
+}
+
+type LockingPack struct {
+	Pack  *Pack
+	Mutex LogMutex
+}
+
 func (lp LockingPack) State() int {
-	lp.Mutex.Lock()
-	defer lp.Mutex.Unlock()
+	lp.Mutex.Mutex.Lock()
+	defer lp.Mutex.Mutex.Unlock()
 	return lp.Pack.State
 }
 
@@ -604,7 +623,7 @@ func (wb *WhiteBox) buildPack(partyId string, path string, targetFile *os.File) 
 
 	party.PacksLock.Lock()
 	var lockingPack LockingPack
-	lockingPack.Mutex = new(sync.Mutex)
+	lockingPack.Mutex.Mutex = new(sync.Mutex)
 	lockingPack.Mutex.Lock()
 	lockingPack.Pack = pack
 	lockingPack.Mutex.Unlock()

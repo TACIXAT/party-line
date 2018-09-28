@@ -65,7 +65,8 @@ func (wb *WhiteBox) flood(env *Envelope) {
 	}
 
 	sentPeers := make(map[string]bool)
-	for _, list := range wb.PeerTable {
+	wb.PeerTable.Mutex.Lock()
+	for _, list := range wb.PeerTable.Table {
 		for curr := list.Front(); curr != nil; curr = curr.Next() {
 			currEntry := curr.Value.(*PeerEntry)
 			currPeer := currEntry.Peer
@@ -87,6 +88,7 @@ func (wb *WhiteBox) flood(env *Envelope) {
 			}
 		}
 	}
+	wb.PeerTable.Mutex.Unlock()
 
 	wb.setStatus("flooded")
 }
@@ -253,7 +255,8 @@ func (wb *WhiteBox) SendChat(msg string) {
 	}
 
 	sendPeers := make(map[string]*Peer)
-	for _, list := range wb.PeerTable {
+	wb.PeerTable.Mutex.Lock()
+	for _, list := range wb.PeerTable.Table {
 		curr := list.Front()
 		if curr == nil {
 			continue
@@ -264,6 +267,7 @@ func (wb *WhiteBox) SendChat(msg string) {
 
 		sendPeers[currPeer.Id()] = currPeer
 	}
+	wb.PeerTable.Mutex.Unlock()
 
 	if len(sendPeers) == 0 {
 		wb.chatStatus("you have no friends, bootstrap to a peer to get started")
@@ -359,8 +363,9 @@ func (wb *WhiteBox) SendPings() {
 		}
 
 		peerSeen := make(map[string]bool)
+		wb.PeerTable.Mutex.Lock()
 		for i := 0; i < 256; i++ {
-			bucketList := wb.PeerTable[i]
+			bucketList := wb.PeerTable.Table[i]
 			for curr := bucketList.Front(); curr != nil; curr = curr.Next() {
 				entry := curr.Value.(*PeerEntry)
 				if entry.Peer != nil {
@@ -373,6 +378,7 @@ func (wb *WhiteBox) SendPings() {
 				}
 			}
 		}
+		wb.PeerTable.Mutex.Unlock()
 	}
 }
 

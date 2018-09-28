@@ -34,13 +34,18 @@ func (lpm LockingPartyMap) Len() int {
 	return len(lpm.Map)
 }
 
+type LockingPeerTable struct {
+	Table [256]*list.List
+	Mutex *sync.Mutex
+}
+
 type WhiteBox struct {
 	BsId              string
 	ChatChannel       chan Chat
 	StatusChannel     chan Status
 	Self              Self
 	PeerSelf          Peer
-	PeerTable         [256]*list.List
+	PeerTable         LockingPeerTable
 	IdealPeerIds      [256]*big.Int
 	EmptyList         bool
 	SeenChats         map[string]bool
@@ -68,6 +73,7 @@ func New(dir, addr, port string) *WhiteBox {
 	wb.ChatChannel = make(chan Chat, 100)
 	wb.StatusChannel = make(chan Status, 100)
 	wb.SeenChats = make(map[string]bool)
+	wb.PeerTable.Mutex = new(sync.Mutex)
 
 	wb.InitFiles(dir)
 	wb.GetKeys(addr + ":" + port)

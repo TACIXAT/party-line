@@ -391,7 +391,7 @@ func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
 	if !ok {
 		newPack.State = AVAILABLE
 
-		lockingPack.Mutex = new(sync.Mutex)
+		lockingPack.Mutex.Mutex = new(sync.Mutex)
 		lockingPack.Mutex.Lock()
 		defer lockingPack.Mutex.Unlock()
 		lockingPack.Pack = newPack
@@ -873,6 +873,7 @@ func (party *PartyLine) SendRequests(packHash string, pack *Pack) {
 	for _, file := range pack.Files {
 		if !isFullCoverage(file.Size, file.Coverage) {
 			party.SendRequest(packHash, file)
+			log.Println("(dbg) sent file request")
 			complete = false
 		}
 	}
@@ -880,6 +881,7 @@ func (party *PartyLine) SendRequests(packHash string, pack *Pack) {
 
 	if complete {
 		pack.State = COMPLETE
+		log.Println("(dbg) pack complete")
 	}
 }
 
@@ -977,6 +979,7 @@ func (party *PartyLine) ProcessFulfillment(partyEnv *PartyEnvelope) {
 	pack := lockingPack.Pack
 	if !ok || pack.State != ACTIVE {
 		// we aren't downloading the pack
+		lockingPack.Mutex.Unlock()
 		return
 	}
 

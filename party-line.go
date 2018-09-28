@@ -13,7 +13,8 @@ import (
 /*
 TODO:
 	write client to client tests
-	lock for minlist, pendinginvites, peercache, pack
+	lock for sendpings, removestalepeers
+	more deadlocks?
 
 	scrolling
 	cursor on input
