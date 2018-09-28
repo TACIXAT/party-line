@@ -372,9 +372,6 @@ func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
 
 	newPack := new(Pack)
 	*newPack = partyAdvertisement.Pack
-	// DATA RACE: with files:227 (sha256Pack)
-	// DATA RACE: with party:660 (StartPack)
-	// DATA RACE: with client_test:243 (testGetPack)
 	newPack.Peers = make(map[string]time.Time)
 	newPack.FileLock = new(sync.Mutex)
 
@@ -399,8 +396,6 @@ func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
 		party.PacksLock.Lock()
 		party.Packs[hash] = lockingPack
 		party.PacksLock.Unlock()
-		// DATA RACE: with client_test:235 (testGetPack)
-		// DATA RACE: with client_test:36 (checkPack)
 
 		lockingPack.Pack.FileLock.Lock()
 		for _, file := range lockingPack.Pack.Files {
@@ -727,7 +722,6 @@ func (party *PartyLine) StartPack(packHash string) {
 	}
 
 	if strings.Contains(pack.Name, "..") {
-		// DATA RACE: with unknown:N (unknown)
 		party.WhiteBox.setStatus("error pack name potential directory traversal")
 		return
 	}

@@ -221,20 +221,12 @@ func testScanPack(wb0, wb1 *whitebox.WhiteBox, partyId string) error {
 	return nil
 }
 
-func checkState(wb *whitebox.WhiteBox, partyId, packHash string) {
-	wb.Parties.Mutex.Lock()
-	lockingPack := wb.Parties.Map[partyId].Packs[packHash]
-	wb.Parties.Mutex.Unlock()
-	log.Printf("STATE: %d", lockingPack.State())
-}
-
 func checkDownload(
 	wb *whitebox.WhiteBox, partyId, packHash string, successChan chan bool) {
 	wb.Parties.Mutex.Lock()
 	lockingPack := wb.Parties.Map[partyId].Packs[packHash]
 	wb.Parties.Mutex.Unlock()
-	checkState(wb, partyId, packHash)
-	// not working ???
+
 	for lockingPack.State() != whitebox.COMPLETE {
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -250,7 +242,6 @@ func testGetPack(wb *whitebox.WhiteBox, partyId string) error {
 	var lockingPack whitebox.LockingPack
 	party.PacksLock.Lock()
 	for packHash, lockingPack = range party.Packs {
-		// DATA RACE: with unknown:N (unknown)
 		break
 	}
 	party.PacksLock.Unlock()
@@ -262,22 +253,18 @@ func testGetPack(wb *whitebox.WhiteBox, partyId string) error {
 	}
 
 	if pack.State != whitebox.AVAILABLE {
-		// DATA RACE: with unknown:N (unknown)
 		return errors.New("Pack not available.")
 	}
 	lockingPack.Mutex.Unlock()
-	checkState(wb, partyId, packHash)
 
 	party.StartPack(packHash)
 
 	successChan := make(chan bool)
 	go checkDownload(wb, partyId, packHash, successChan)
-	checkState(wb, partyId, packHash)
 	select {
 	case <-successChan:
 		// nop
 	case <-time.After(60 * time.Second):
-		checkState(wb, partyId, packHash)
 		return errors.New("No pack downloaded (timeout).")
 	}
 
@@ -408,7 +395,7 @@ func TestClientInteractions(t *testing.T) {
 	}
 
 cleanup:
-	// os.RemoveAll(dir0)
-	// os.RemoveAll(dir1)
+	os.RemoveAll(dir0)
+	os.RemoveAll(dir1)
 	return
 }

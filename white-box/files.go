@@ -236,7 +236,6 @@ func sha256Pack(pack *Pack) string {
 	}
 
 	pack.FileLock.Lock()
-	// DATA RACE: with unknown:N (unknown)
 	sort.Sort(ByFileName(pack.Files))
 	pack.FileLock.Unlock()
 
