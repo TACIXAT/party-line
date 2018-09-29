@@ -7,14 +7,15 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 )
 
 /*
 TODO:
-	figure out smooth update process
-	use releases
 	perm nodes
+	use releases
+	figure out smooth update process
 
 	scrolling
 	cursor on input
@@ -100,7 +101,8 @@ func main() {
 
 	// log to file
 	// TODO: change name irl
-	logname := fmt.Sprintf("/tmp/partylog.%s", wb.PeerSelf.Id()[:6])
+	logname := fmt.Sprintf("partylog.%s", wb.PeerSelf.Id()[:6])
+	logname = filepath.Join(os.TempDir(), logname)
 	f, err := os.OpenFile(logname, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatalf("error opening file: %v", err)

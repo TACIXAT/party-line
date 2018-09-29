@@ -328,7 +328,7 @@ func TestClientInteractions(t *testing.T) {
 	// log to file
 	// TODO: change name irl
 
-	logname := "/tmp/partylog.test"
+	logname := filepath.Join(os.TempDir(), "partylog.test")
 	f, err := os.OpenFile(logname, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatalf("error opening file: %v", err)
