@@ -1,15 +1,20 @@
 package main
 
 import (
+	"context"
 	"github.com/NebulousLabs/go-upnp"
 	"github.com/jackpal/gateway"
 	"github.com/jackpal/go-nat-pmp"
 	"log"
 	"net"
+	"time"
 )
 
 func upnpDiscover() (*upnp.IGD, error) {
-	client, err := upnp.Discover()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	client, err := upnp.DiscoverCtx(ctx)
 	if err != nil {
 		log.Println(err)
 		return nil, err
@@ -143,6 +148,32 @@ func natCleanup() {
 	}
 }
 
+func tryNatPMP(extIP *net.IP, port uint16, successChan chan bool) {
+	log.Println("trying pmp...")
+	log.Println("untested!!! let me know if it works")
+
+	var err error
+	pmpClient, err = pmpDiscover()
+	if err != nil {
+		log.Println("error with pmp", err)
+		successChan <- false
+	}
+
+	*extIP, err = pmpExternalIP(pmpClient)
+	if err != nil {
+		log.Println("error with pmp", err)
+		successChan <- false
+	}
+
+	err = pmpOpen(pmpClient, port)
+	if err != nil {
+		log.Println("error with pmp", err)
+		successChan <- false
+	}
+
+	successChan <- true
+}
+
 func natStuff(port uint16) net.IP {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
@@ -154,52 +185,47 @@ func natStuff(port uint16) net.IP {
 	openedPort = port
 
 	var extIP net.IP = ip
+	var successChan chan bool
 	if isPrivateIP(ip) {
 		log.Println("private ip detected")
 		log.Println("trying upnp...")
 
 		upnpClient, err = upnpDiscover()
 		if err != nil {
-			log.Println("error with upnp", err)
+			log.Println("error with upnp (discover)", err)
 			goto pmp
 		}
 
 		extIP, err = upnpExternalIP(upnpClient)
 		if err != nil {
-			log.Println("error with upnp", err)
+			log.Println("error with upnp (ext ip)", err)
 			goto pmp
 		}
 
 		err = upnpOpen(upnpClient, port)
 		if err != nil {
-			log.Println("error with upnp", err)
+			log.Println("error with upnp (open)", err)
 			goto pmp
 		}
 
 		closeUpnp = true
 		goto natSuccess
 	pmp:
-		log.Println("trying pmp...")
-		log.Println("untested!!! let me know if it works")
-		pmpClient, err = pmpDiscover()
-		if err != nil {
-			log.Println("error with pmp", err)
+		successChan = make(chan bool)
+		go tryNatPMP(&extIP, port, successChan)
+		select {
+		case result := <-successChan:
+			if result {
+				closePmp = true
+				goto natSuccess
+			} else {
+				goto natFail
+			}
+		case <-time.After(30 * time.Second):
+			log.Println("nat pmp timed out :(")
 			goto natFail
 		}
 
-		extIP, err = pmpExternalIP(pmpClient)
-		if err != nil {
-			log.Println("error with pmp", err)
-			goto natFail
-		}
-
-		err = pmpOpen(pmpClient, port)
-		if err != nil {
-			log.Println("error with pmp", err)
-			goto natFail
-		}
-
-		closePmp = true
 		goto natSuccess
 	natFail:
 		log.Println("could not map port with upnp or pmp")

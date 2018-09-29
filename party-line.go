@@ -15,7 +15,7 @@ TODO:
 	figure out smooth update process
 	use releases
 	perm nodes
-	
+
 	scrolling
 	cursor on input
 	better keys
