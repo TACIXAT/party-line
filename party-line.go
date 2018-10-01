@@ -9,11 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 )
 
 /*
 TODO:
-	perm nodes
+	perm nodes reuse keys
 	use releases
 	figure out smooth update process
 
@@ -44,6 +45,8 @@ var ipFlag *string
 var nonatFlag *bool
 var shareFlag *string
 
+var permParties []string
+
 func statusReceiver(wb *whitebox.WhiteBox) {
 	for {
 		status := <-wb.StatusChannel
@@ -65,6 +68,14 @@ func chatReceiver(wb *whitebox.WhiteBox) {
 	}
 }
 
+// TODO: make this not a race condition
+func bsInASecond(wb *whitebox.WhiteBox) {
+	select {
+	case <-time.After(1 * time.Second):
+		wb.SendBootstrap(permParties[0], permParties[1])
+	}
+}
+
 func main() {
 	debugFlag = flag.Bool("debug", false, "Debug.")
 	portFlag = flag.Uint("port", 3499, "Port.")
@@ -72,6 +83,12 @@ func main() {
 	nonatFlag = flag.Bool("nonat", false, "Disable UPNP and PMP.")
 	shareFlag = flag.String("share", "", "Base directory to share from.")
 	flag.Parse()
+
+	permParties = make([]string, 0)
+	permParties = append(permParties, "138.197.201.244:3499")
+	permParties = append(
+		permParties,
+		"de337cab9785c03f65404e35403a16600ec382b5aa9316fe4b636a242ce5e6a3")
 
 	dir := ""
 	if shareFlag != nil {
@@ -121,5 +138,6 @@ func main() {
 	// start network receiver
 	wb.Run(port)
 
+	bsInASecond(wb)
 	userInterface(wb)
 }

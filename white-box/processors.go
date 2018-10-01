@@ -32,6 +32,8 @@ func (wb *WhiteBox) processMessage(strMsg string) {
 		return
 	}
 
+	log.Println("got %s", env.Type)
+
 	switch env.Type {
 	case "announce":
 		wb.processAnnounce(env)
