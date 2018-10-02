@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/TACIXAT/party-line/white-box"
+	"github.com/mitchellh/go-homedir"
 	"log"
 	"net"
 	"os"
@@ -15,6 +16,7 @@ import (
 /*
 TODO:
 	perm nodes reuse keys
+	bs perm node, wait for correct signal (don't just sleep 1 second)
 	use releases
 	figure out smooth update process
 
@@ -44,6 +46,7 @@ var portFlag *uint
 var ipFlag *string
 var nonatFlag *bool
 var shareFlag *string
+var permFlag *bool
 
 var permParties []string
 
@@ -76,12 +79,55 @@ func bsInASecond(wb *whitebox.WhiteBox) {
 	}
 }
 
+func pathExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return true, err
+}
+
+func savePerm(self whitebox.Self) {
+	// mkdir all
+
+	// marshal json
+
+	// write file
+}
+
+func fetchPerm(self whitebox.Self) whitebox.Self {
+	home, err := homedir.Dir()
+	if err != nil {
+		log.Fatal("could not get home dir")
+	}
+	path := filepath.Join(home, "party-line", "perm.self")
+
+	exists, err := pathExists(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if !exists {
+		return self
+	}
+
+	// read file
+
+	// unmarshal json
+
+	return self
+}
+
 func main() {
 	debugFlag = flag.Bool("debug", false, "Debug.")
 	portFlag = flag.Uint("port", 3499, "Port.")
 	ipFlag = flag.String("ip", "", "Manually set external IP.")
 	nonatFlag = flag.Bool("nonat", false, "Disable UPNP and PMP.")
 	shareFlag = flag.String("share", "", "Base directory to share from.")
+	permFlag = flag.Bool("perm", false, "Use a permanent ID (keys).")
 	flag.Parse()
 
 	permParties = make([]string, 0)
@@ -114,7 +160,16 @@ func main() {
 	// build self info (addr, keys, id)
 	portStr := strconv.FormatUint(uint64(port), 10)
 
-	wb := whitebox.New(dir, extIP.String(), portStr)
+	var self whitebox.Self
+	if *permFlag {
+		self = fetchPerm(self)
+	}
+
+	wb := whitebox.New(dir, extIP.String(), portStr, self)
+
+	if *permFlag {
+		savePerm(self)
+	}
 
 	// log to file
 	// TODO: change name irl

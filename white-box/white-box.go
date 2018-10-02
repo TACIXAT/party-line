@@ -68,13 +68,14 @@ func (wb *WhiteBox) Run(port uint16) {
 	go wb.Advertise()
 }
 
-func New(dir, addr, port string) *WhiteBox {
+func New(dir, addr, port string, self Self) *WhiteBox {
 	wb := new(WhiteBox)
 	wb.ChatChannel = make(chan Chat, 100)
 	wb.StatusChannel = make(chan Status, 100)
 	wb.SeenChats = make(map[string]bool)
 	wb.PeerTable.Mutex = new(sync.Mutex)
 
+	wb.Self = self
 	wb.InitFiles(dir)
 	wb.GetKeys(addr + ":" + port)
 	wb.CalculateIdealTableSelf(wb.Self.SignPub)
@@ -247,23 +248,39 @@ func (wb *WhiteBox) IdToMin(id string) (*MinPeer, error) {
 	return min, nil
 }
 
+func (wb *WhiteBox) SetSelf(self Self) {
+	wb.Self = self
+	wb.PeerSelf.SignPub = wb.Self.SignPub
+	wb.PeerSelf.EncPub = wb.Self.EncPub
+	wb.PeerSelf.Address = wb.Self.Address
+	log.Println(wb.PeerSelf.Id())
+}
+
+func selfZero(self Self) bool {
+	return self.SignPub == nil || self.SignPrv == nil ||
+		self.EncPub == nil || self.SignPrv == nil
+}
+
 func (wb *WhiteBox) GetKeys(address string) {
-	r := rand.Reader
-	signPub, signPrv, err := sign.Keypair(r)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	encPub, encPrv, err := box.GenerateKey(r)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	wb.Self.SignPub = signPub
-	wb.Self.SignPrv = signPrv
-	wb.Self.EncPub = encPub
-	wb.Self.EncPrv = encPrv
 	wb.Self.Address = address
+
+	if selfZero(wb.Self) {
+		r := rand.Reader
+		signPub, signPrv, err := sign.Keypair(r)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		encPub, encPrv, err := box.GenerateKey(r)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		wb.Self.SignPub = signPub
+		wb.Self.SignPrv = signPrv
+		wb.Self.EncPub = encPub
+		wb.Self.EncPrv = encPrv
+	}
 
 	wb.PeerSelf.SignPub = wb.Self.SignPub
 	wb.PeerSelf.EncPub = wb.Self.EncPub

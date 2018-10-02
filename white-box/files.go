@@ -18,26 +18,6 @@ import (
 	"time"
 )
 
-/*
-	on start / refresh / monitor?
-	walk directory
-	load own packs
-
-	advertise own packs
-
-	other packs -> signatures in some recent time frame
-
-	peers send signed packs
-	client show packs with sig counts
-	user selects a pack
-	user requests pack
-	downloads/party-line/channel is created if not present
-	pieces come in
-	client constructs chains
-		map[hash of block] block
-		as blocks are verified they are written to disk
-*/
-
 type DotPack struct {
 	Name  string
 	Files []string
