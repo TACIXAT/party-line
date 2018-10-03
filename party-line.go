@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/TACIXAT/party-line/white-box"
 	"github.com/mitchellh/go-homedir"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -91,11 +93,41 @@ func pathExists(path string) (bool, error) {
 }
 
 func savePerm(self whitebox.Self) {
-	// mkdir all
+	home, err := homedir.Dir()
+	if err != nil {
+		log.Fatal("could not get home dir")
+	}
+
+	basePath := filepath.Join(home, "party-line")
+	err = os.MkdirAll(basePath, 0700)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// marshal json
+	jsonSelf, err := json.Marshal(self)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Println("self size:", len(jsonSelf))
+	path := filepath.Join(basePath, "perm.self")
 
 	// write file
+	selfFile, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	n, err := selfFile.Write([]byte(jsonSelf))
+	if err != nil || n != len(jsonSelf) {
+		log.Fatal(err)
+	}
+
+	err = selfFile.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func fetchPerm(self whitebox.Self) whitebox.Self {
@@ -115,8 +147,22 @@ func fetchPerm(self whitebox.Self) whitebox.Self {
 	}
 
 	// read file
+	selfFile, err := os.Open(path)
+	defer selfFile.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	contents, err := ioutil.ReadAll(selfFile)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// unmarshal json
+	err = json.Unmarshal(contents, &self)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	return self
 }
@@ -168,7 +214,7 @@ func main() {
 	wb := whitebox.New(dir, extIP.String(), portStr, self)
 
 	if *permFlag {
-		savePerm(self)
+		savePerm(wb.Self)
 	}
 
 	// log to file

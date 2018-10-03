@@ -574,6 +574,7 @@ func (wb *WhiteBox) buildPack(partyId string, path string, targetFile *os.File) 
 		packFileInfo.BlockLookup = buildBlockLookup(blockMap, firstBlockHash)
 
 		pack.Files = append(pack.Files, packFileInfo)
+		sharedFile.Close()
 	}
 
 	sort.Sort(ByFileName(pack.Files))

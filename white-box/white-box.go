@@ -121,9 +121,9 @@ type Chat struct {
 
 type Self struct {
 	EncPub  nacl.Key
-	EncPrv  nacl.Key `json:"-"`
+	EncPrv  nacl.Key
 	SignPub sign.PublicKey
-	SignPrv sign.PrivateKey `json:"-"`
+	SignPrv sign.PrivateKey
 	Address string
 }
 
