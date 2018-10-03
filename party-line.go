@@ -17,8 +17,8 @@ import (
 
 /*
 TODO:
-	perm nodes reuse keys
 	bs perm node, wait for correct signal (don't just sleep 1 second)
+	perm node connecting to self (why key not invalid?)
 	use releases
 	figure out smooth update process
 
@@ -74,7 +74,14 @@ func chatReceiver(wb *whitebox.WhiteBox) {
 }
 
 // TODO: make this not a race condition
+// TODO: flag to not do this
+// TODO: select peer that isn't self
 func bsInASecond(wb *whitebox.WhiteBox) {
+	front, err := wb.IdFront(wb.PeerSelf.Id())
+	if err != nil || permParties[1] == front {
+		return
+	}
+
 	select {
 	case <-time.After(1 * time.Second):
 		wb.SendBootstrap(permParties[0], permParties[1])
@@ -180,7 +187,7 @@ func main() {
 	permParties = append(permParties, "138.197.201.244:3499")
 	permParties = append(
 		permParties,
-		"de337cab9785c03f65404e35403a16600ec382b5aa9316fe4b636a242ce5e6a3")
+		"3ce244e4426fd2cb1c41c5954c879ce0a3c19bf1452fb66be84de03825bc6f30")
 
 	dir := ""
 	if shareFlag != nil {
