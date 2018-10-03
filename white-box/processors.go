@@ -207,7 +207,8 @@ func (wb *WhiteBox) processAnnounce(env *Envelope) {
 	}
 
 	cache, seen := wb.PeerCache.Get(peer.Id())
-	if !seen || !cache.Added {
+	// TODO: this can be replayed, make announce struct with timestamp
+	if !seen || !cache.Added || cache.Disconnected {
 		peerConn, err := net.Dial("udp", peer.Address)
 		if err != nil {
 			log.Println(err)
@@ -219,10 +220,11 @@ func (wb *WhiteBox) processAnnounce(env *Envelope) {
 		wb.addPeer(peer)
 	}
 
-	if !seen || !cache.Announced {
+	if !seen || !cache.Announced || cache.Disconnected {
 		wb.flood(env)
 		cache, _ = wb.PeerCache.Get(peer.Id())
 		cache.Announced = true
+		cache.Disconnected = false
 		wb.PeerCache.Set(peer.Id(), cache)
 	}
 }
