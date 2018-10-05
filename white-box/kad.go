@@ -178,7 +178,7 @@ func (wb *WhiteBox) cacheMin(min MinPeer) {
 
 func (wb *WhiteBox) addPeer(peer *Peer, seenTime time.Time) {
 	cache, seen := wb.PeerCache.Get(peer.Id())
-	if seen && cache.Added {
+	if seen && cache.Added && !cache.Disconnected {
 		return
 	}
 
