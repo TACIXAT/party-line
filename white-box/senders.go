@@ -101,7 +101,8 @@ func (wb *WhiteBox) sendSuggestionRequest(peer *Peer) {
 
 	request := MessageSuggestionRequest{
 		Peer: wb.PeerSelf,
-		To:   peer.Id()}
+		To:   peer.Id(),
+		Time: time.Now().UTC()}
 
 	jsonReq, err := json.Marshal(request)
 	if err != nil {
@@ -164,7 +165,8 @@ func (wb *WhiteBox) sendSuggestions(peer *Peer, requestData []byte) {
 	suggestions := MessageSuggestions{
 		Peer:           wb.PeerSelf,
 		RequestData:    requestData,
-		SuggestedPeers: peerSet}
+		SuggestedPeers: peerSet,
+		Time:           time.Now().UTC()}
 
 	jsonSuggestions, err := json.Marshal(suggestions)
 	if err != nil {
@@ -189,7 +191,11 @@ func (wb *WhiteBox) SendBootstrap(addr, peerId string) {
 		From: wb.PeerSelf.Id(),
 		To:   peerId}
 
-	jsonBs, err := json.Marshal(wb.PeerSelf)
+	timePeer := MessageTimePeer{
+		Peer: wb.PeerSelf,
+		Time: time.Now().UTC()}
+
+	jsonBs, err := json.Marshal(timePeer)
 	if err != nil {
 		log.Println(err)
 		return
@@ -219,7 +225,11 @@ func (wb *WhiteBox) sendVerify(peer *Peer) {
 		From: wb.PeerSelf.Id(),
 		To:   peer.Id()}
 
-	jsonBs, err := json.Marshal(wb.PeerSelf)
+	timePeer := MessageTimePeer{
+		Peer: wb.PeerSelf,
+		Time: time.Now().UTC()}
+
+	jsonBs, err := json.Marshal(timePeer)
 	if err != nil {
 		log.Println(err)
 		return
@@ -295,7 +305,11 @@ func (wb *WhiteBox) sendAnnounce(peer *Peer) {
 		From: wb.PeerSelf.Id(),
 		To:   ""}
 
-	jsonAnnounce, err := json.Marshal(wb.PeerSelf)
+	timePeer := MessageTimePeer{
+		Peer: wb.PeerSelf,
+		Time: time.Now().UTC()}
+
+	jsonAnnounce, err := json.Marshal(timePeer)
 	if err != nil {
 		log.Println(err)
 		return

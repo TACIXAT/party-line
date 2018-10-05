@@ -175,11 +175,13 @@ type MessageSuggestions struct {
 	Peer           Peer
 	RequestData    []byte
 	SuggestedPeers []Peer
+	Time           time.Time
 }
 
 type MessageSuggestionRequest struct {
 	Peer Peer
 	To   string
+	Time time.Time
 }
 
 type MessageChat struct {
@@ -197,6 +199,11 @@ type MessagePing struct {
 	Min         MinPeer
 	MessageType int
 	Time        time.Time
+}
+
+type MessageTimePeer struct {
+	Peer Peer
+	Time time.Time
 }
 
 func (wb *WhiteBox) IdFront(id string) (string, error) {

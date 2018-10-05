@@ -47,6 +47,7 @@ type PeerCache struct {
 	Added        bool
 	Announced    bool
 	Disconnected bool
+	Time         time.Time
 }
 
 func (wb *WhiteBox) InitTable(idBytes []byte) {
@@ -133,6 +134,13 @@ func (wb *WhiteBox) removeStalePeers() {
 			wb.setStatus("removed stale peer")
 			wb.PeerTable.Table[i].Remove(element)
 			removed = true
+
+			entry := element.Value.(*PeerEntry)
+			cache, seen := wb.PeerCache.Get(entry.Peer.Id())
+			if !seen || !cache.Disconnected {
+				cache.Disconnected = true
+				wb.PeerCache.Set(entry.Peer.Id(), cache)
+			}
 		}
 	}
 	wb.PeerTable.Mutex.Unlock()
@@ -168,13 +176,15 @@ func (wb *WhiteBox) cacheMin(min MinPeer) {
 	wb.PeerCache.Set(min.Id(), cache)
 }
 
-func (wb *WhiteBox) addPeer(peer *Peer) {
+func (wb *WhiteBox) addPeer(peer *Peer, seenTime time.Time) {
 	cache, seen := wb.PeerCache.Get(peer.Id())
 	if seen && cache.Added {
 		return
 	}
 
 	cache.Added = true
+	cache.Disconnected = false
+	cache.Time = seenTime
 	wb.PeerCache.Set(peer.Id(), cache)
 
 	idBytes := peer.SignPub

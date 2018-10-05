@@ -127,13 +127,16 @@ func (wb *WhiteBox) processBootstrap(env *Envelope) {
 		return
 	}
 
-	peer := new(Peer)
-	err = json.Unmarshal(jsonData, peer)
+	timePeer := new(MessageTimePeer)
+	err = json.Unmarshal(jsonData, timePeer)
 	if err != nil {
 		log.Println(err)
 		wb.setStatus("error invalid json (bs)")
 		return
 	}
+
+	peer := new(Peer)
+	*peer = timePeer.Peer
 
 	if env.From != peer.Id() {
 		wb.setStatus("id does not match from (bs)")
@@ -150,7 +153,12 @@ func (wb *WhiteBox) processBootstrap(env *Envelope) {
 	peer.Conn = peerConn
 
 	wb.sendVerify(peer)
-	wb.addPeer(peer)
+
+	cache, seen := wb.PeerCache.Get(peer.Id())
+	reconnecting := cache.Disconnected && timePeer.Time.After(cache.Time)
+	if !seen || !cache.Added || reconnecting {
+		wb.addPeer(peer, timePeer.Time)
+	}
 }
 
 func (wb *WhiteBox) processVerify(env *Envelope) {
@@ -160,13 +168,16 @@ func (wb *WhiteBox) processVerify(env *Envelope) {
 		return
 	}
 
-	peer := new(Peer)
-	err = json.Unmarshal(jsonData, peer)
+	timePeer := new(MessageTimePeer)
+	err = json.Unmarshal(jsonData, timePeer)
 	if err != nil {
 		log.Println(err)
 		wb.setStatus("error invalid json (bsverify)")
 		return
 	}
+
+	peer := new(Peer)
+	*peer = timePeer.Peer
 
 	if env.From != peer.Id() {
 		wb.setStatus("id does not match from (bsverify)")
@@ -181,7 +192,13 @@ func (wb *WhiteBox) processVerify(env *Envelope) {
 	}
 
 	peer.Conn = peerConn
-	wb.addPeer(peer)
+
+	cache, seen := wb.PeerCache.Get(peer.Id())
+	reconnecting := cache.Disconnected && timePeer.Time.After(cache.Time)
+	if !seen || !cache.Added || reconnecting {
+		wb.addPeer(peer, timePeer.Time)
+	}
+
 	wb.setStatus("verified")
 	wb.sendAnnounce(peer)
 	wb.sendSuggestionRequest(peer)
@@ -194,21 +211,24 @@ func (wb *WhiteBox) processAnnounce(env *Envelope) {
 		return
 	}
 
-	peer := new(Peer)
-	err = json.Unmarshal(jsonData, peer)
+	announce := new(MessageTimePeer)
+	err = json.Unmarshal(jsonData, announce)
 	if err != nil {
 		log.Println(err)
 		wb.setStatus("error invalid json (announce)")
 		return
 	}
 
+	peer := new(Peer)
+	*peer = announce.Peer
+
 	if peer.Id() == wb.PeerSelf.Id() {
 		return
 	}
 
 	cache, seen := wb.PeerCache.Get(peer.Id())
-	// TODO: this can be replayed, make announce struct with timestamp
-	if !seen || !cache.Added || cache.Disconnected {
+	reconnecting := cache.Disconnected && announce.Time.After(cache.Time)
+	if !seen || !cache.Added || reconnecting {
 		peerConn, err := net.Dial("udp", peer.Address)
 		if err != nil {
 			log.Println(err)
@@ -217,14 +237,13 @@ func (wb *WhiteBox) processAnnounce(env *Envelope) {
 		}
 
 		peer.Conn = peerConn
-		wb.addPeer(peer)
+		wb.addPeer(peer, announce.Time)
 	}
 
-	if !seen || !cache.Announced || cache.Disconnected {
+	if !seen || !cache.Announced || reconnecting {
 		wb.flood(env)
 		cache, _ = wb.PeerCache.Get(peer.Id())
 		cache.Announced = true
-		cache.Disconnected = false
 		wb.PeerCache.Set(peer.Id(), cache)
 	}
 }
@@ -264,8 +283,9 @@ func (wb *WhiteBox) processSuggestionRequest(env *Envelope) {
 	wb.sendSuggestions(peer, env.Data)
 
 	cache, seen := wb.PeerCache.Get(peer.Id())
-	if !seen || !cache.Added {
-		wb.addPeer(peer)
+	reconnecting := cache.Disconnected && request.Time.After(cache.Time)
+	if !seen || !cache.Added || reconnecting {
+		wb.addPeer(peer, request.Time)
 	}
 }
 
@@ -295,7 +315,8 @@ func (wb *WhiteBox) processSuggestions(env *Envelope) {
 	*peer = suggestions.Peer
 
 	cache, seen := wb.PeerCache.Get(peer.Id())
-	if !seen || !cache.Added {
+	reconnecting := cache.Disconnected && suggestions.Time.After(cache.Time)
+	if !seen || !cache.Added || reconnecting {
 		peerConn, err := net.Dial("udp", peer.Address)
 		if err != nil {
 			log.Println(err)
@@ -304,7 +325,7 @@ func (wb *WhiteBox) processSuggestions(env *Envelope) {
 		}
 
 		peer.Conn = peerConn
-		wb.addPeer(peer)
+		wb.addPeer(peer, suggestions.Time)
 	}
 
 	for _, newPeer := range suggestions.SuggestedPeers {
