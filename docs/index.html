@@ -94,11 +94,11 @@
             <p>Download the source from <a href="https://github.com/douggard/party-line">the source thing</a>.</p>
             <p>Try the 64 bit binaries</p>
             <ul>
-                <li><a href="https://github.com/douggard/party-line/raw/master/bin/party-line-linux">Linux</a> (tested on GNU/Windows Subsystem for Linux!)</li>
-                <li><a href="https://github.com/douggard/party-line/raw/master/bin/party-line-win.exe">Windows</a> (<a href="https://www.virustotal.com/#/file/0253b84971a5bd119debab12248404bb5ad20cd3882a02354e2679308e9d16bf/detection" title="definitely malware">"绝对是流氓软件！" -Jiangmin AV</a>)</li>
-                <li><a href="https://github.com/douggard/party-line/raw/master/bin/party-line-macos">MacOS</a></li>
+                <li><a href="https://github.com/TACIXAT/party-line/releases/download/0.1/party-line-linux">Linux</a> (tested on GNU/Windows Subsystem for Linux!)</li>
+                <li><a href="https://github.com/TACIXAT/party-line/releases/download/0.1/party-line-win.exe">Windows</a> (<a href="https://www.virustotal.com/#/file/f015b4df7e33e128a8603f14647d9210238b1798874ed6b1a535efeede3329db">"绝对是流氓软件！" -Jiangmin AV</a>)</li>
+                <li><a href="https://github.com/TACIXAT/party-line/releases/download/0.1/party-line-macos">MacOS</a></li>
             </ul>
-            <p>How to run:</p>
+            <p>How to run (linux):</p>
             <pre>
     wget [copy link from precompiled binary]
     chmod +x [downloaded binary]
@@ -108,19 +108,18 @@
             <pre>
     git clone https://github.com/douggard/party-line.git
     cd party-line
+    go get ./...
     go run *.go
             </pre>
-            <p>Once connected use the <b style='font-family: monospace'>/bs [peer info]</b> command below if the network is live, or get a friend's bootstrap info and start your own network.</p>
+            <p>It should auto connect to one of the permanent nodes. If anyone is online you'll be connected to them.</p>
             <p>Network should either have no nat (e.g. vps) or support upnp (e.g. home router). If you're on a VPN that enables port forwarding you can set use the options <pre>-nonat -ip $EXT_IP -port $EXT_PORT</pre> to set things up manually.</p>
         </main>
         <extra class="extra">
             <iframe class='cool-site' src="https://en.wikipedia.org/wiki/Party_line_(telephony)"></iframe>
         </extra>
         <footer class='footer'>
-            <p>network is <del>live</del></p>
-            <!-- <p>network is live!</p> -->
-            <p>connect with:</p>
-            <pre>/bs -</pre>
+            <!-- <p>network is <del>live</del></p> -->
+            <p>network is live!</p>
         </footer>
         
         <script>
