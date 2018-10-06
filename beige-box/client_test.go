@@ -340,16 +340,19 @@ func TestClientInteractions(t *testing.T) {
 
 	var partyId string // predec so we can use goto
 
+	var self0 whitebox.Self
+	var self1 whitebox.Self
+
 	var port0 uint16 = 3499
 	port0Str := strconv.FormatInt(int64(port0), 10)
 	dir0 := filepath.Join(os.TempDir(), "partytest.dir0")
-	wb0 := whitebox.New(dir0, "127.0.0.1", port0Str)
+	wb0 := whitebox.New(dir0, "127.0.0.1", port0Str, self0)
 	wb0.Run(port0)
 
 	var port1 uint16 = 4919
 	port1Str := strconv.FormatInt(int64(port1), 10)
 	dir1 := filepath.Join(os.TempDir(), "partytest.dir1")
-	wb1 := whitebox.New(dir1, "127.0.0.1", port1Str)
+	wb1 := whitebox.New(dir1, "127.0.0.1", port1Str, self1)
 	wb1.Run(port1)
 
 	err = testBootstrap(wb0, wb1, port1Str)

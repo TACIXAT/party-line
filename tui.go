@@ -249,7 +249,6 @@ func handleInvite(wb *whitebox.WhiteBox, toks []string) {
 	// iterate peers
 	var min *whitebox.MinPeer
 	wb.PeerCache.Mutex.Lock()
-	wb.PeerCache.Mutex.Unlock()
 	for id, _ := range wb.PeerCache.Map {
 		front, err := wb.IdFront(id)
 		if err != nil {
