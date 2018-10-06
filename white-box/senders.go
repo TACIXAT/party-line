@@ -383,12 +383,16 @@ func (wb *WhiteBox) SendPings() {
 			for curr := bucketList.Front(); curr != nil; curr = curr.Next() {
 				entry := curr.Value.(*PeerEntry)
 				if entry.Peer != nil {
+					log.Println("ping peer found", entry.Peer.Id()[:6])
 					_, seen := peerSeen[entry.Peer.Id()]
 					if !seen {
+						log.Println("pinging", entry.Peer.Id()[:6], "at", i)
 						entry.Peer.Conn.Write(
 							[]byte(fmt.Sprintf("%s\n", string(jsonEnv))))
 						peerSeen[entry.Peer.Id()] = true
 					}
+				} else {
+					log.Println("entry.Peer is nil at", i)
 				}
 			}
 		}

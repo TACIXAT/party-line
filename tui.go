@@ -514,7 +514,8 @@ func handlePacks(wb *whitebox.WhiteBox, toks []string) {
 			chatStatus("PACK: " + packHash)
 			chatStatus(line)
 
-			pack.FileLock.Lock() // TODO: is file lock still necessary now that we have pack lock?
+			pack.FileLock.Lock()
+			// TODO: is file lock still necessary now that we have pack lock?
 			for _, packFileInfo := range pack.Files {
 				chatStatus("  FILE: " + packFileInfo.Hash)
 				chatStatus("  \"" + packFileInfo.Name + "\"")

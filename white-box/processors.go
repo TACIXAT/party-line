@@ -32,7 +32,7 @@ func (wb *WhiteBox) processMessage(strMsg string) {
 		return
 	}
 
-	log.Println("got %s", env.Type)
+	log.Println("got ", env.Type)
 
 	switch env.Type {
 	case "announce":
@@ -80,6 +80,7 @@ func (wb *WhiteBox) verifyEnvelope(env *Envelope, caller string) ([]byte, error)
 	}
 
 	jsonData := data[sign.SignatureSize:]
+	log.Println("json", string(jsonData))
 	return jsonData, nil
 }
 
@@ -264,7 +265,6 @@ func (wb *WhiteBox) processSuggestionRequest(env *Envelope) {
 	}
 
 	if request.To != wb.PeerSelf.Id() {
-		wb.setStatus("error invalid to (request)")
 		return
 	}
 

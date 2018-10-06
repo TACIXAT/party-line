@@ -131,7 +131,6 @@ func (wb *WhiteBox) removeStalePeers() {
 		}
 
 		for _, element := range removeList {
-			wb.setStatus("removed stale peer")
 			wb.PeerTable.Table[i].Remove(element)
 			removed = true
 
@@ -141,6 +140,8 @@ func (wb *WhiteBox) removeStalePeers() {
 				cache.Disconnected = true
 				wb.PeerCache.Set(entry.Peer.Id(), cache)
 			}
+
+			wb.setStatus("removed stale peer " + entry.Peer.Id()[:6])
 		}
 	}
 	wb.PeerTable.Mutex.Unlock()
@@ -217,7 +218,7 @@ func (wb *WhiteBox) addPeer(peer *Peer, seenTime time.Time) {
 	}
 	wb.PeerTable.Mutex.Unlock()
 
-	log.Println("peer added")
+	log.Println("peer added", peer.Id()[:6], "to list", idx)
 
 	if wb.EmptyList {
 		wb.chatStatus("peer added, happy chatting!")

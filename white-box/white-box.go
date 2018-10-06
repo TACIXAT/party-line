@@ -324,6 +324,7 @@ func (wb *WhiteBox) Recv(address string, port uint16) {
 }
 
 func (wb *WhiteBox) setStatus(message string) {
+	log.Println(message)
 	status := Status{
 		Priority: TONE_LOW,
 		Message:  message,
