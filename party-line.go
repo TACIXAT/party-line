@@ -249,4 +249,7 @@ func main() {
 
 	bsInASecond(wb)
 	userInterface(wb)
+	log.SetOutput(os.Stderr)
+	log.Println("Shutting down...")
+	time.Sleep(1 * time.Second)
 }
