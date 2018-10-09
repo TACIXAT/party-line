@@ -20,7 +20,6 @@ TODO:
 	bs perm node, wait for correct signal (don't just sleep 1 second)
 	perm node connecting to self (why key not invalid?)
 	perm nodes reconnecting, figure out better mechanism (cache.Disconnected)
-	use releases
 	figure out smooth update process
 
 	scrolling

@@ -25,29 +25,36 @@ func init() {
 	mrand.Seed(time.Now().UTC().UnixNano())
 }
 
+// Structure passed to VerifiedBlockWriter, used for writing blocks to disk.
+// Hash is SHA256.
 type VerifiedBlock struct {
 	Block        *Block
 	PackFileInfo *PackFileInfo
 	Hash         string
 }
 
+// MinList wrapper that includes a lock. MinList is a minimal list of peer
+// IDs. The int is unused and the map simply acts as a set.
 type LockingMinList struct {
 	Map   map[string]int
 	Mutex *sync.Mutex
 }
 
+// Return the length of a MinList.
 func (lml LockingMinList) Len() int {
 	lml.Mutex.Lock()
 	defer lml.Mutex.Unlock()
 	return len(lml.Map)
 }
 
+// Add a peer id to the MinList.
 func (lml LockingMinList) Set(key string, value int) {
 	lml.Mutex.Lock()
 	defer lml.Mutex.Unlock()
 	lml.Map[key] = value
 }
 
+// Return a peer ID exists in the MinList.
 func (lml LockingMinList) Get(key string) (int, bool) {
 	lml.Mutex.Lock()
 	defer lml.Mutex.Unlock()
@@ -55,15 +62,23 @@ func (lml LockingMinList) Get(key string) (int, bool) {
 	return value, ok
 }
 
+// Master structure for a party.
 type PartyLine struct {
-	MinList   LockingMinList
-	Id        string
-	SeenChats map[string]bool        `json:"-"`
-	Packs     map[string]LockingPack `json:"-"`
-	PacksLock *sync.Mutex            `json:"-"`
-	WhiteBox  *WhiteBox              `json:"-"`
+	// A map of peer IDs participating in the party.
+	MinList LockingMinList
+	// The party's name.
+	Id string
+	// A map used to prevent reflooding messages.
+	SeenChats map[string]bool `json:"-"`
+	// Packs advertised in the party.
+	Packs map[string]LockingPack `json:"-"`
+	// Lock for the pack map.
+	PacksLock *sync.Mutex `json:"-"`
+	// Back reference to the parent WhiteBox structure.
+	WhiteBox *WhiteBox `json:"-"`
 }
 
+// External structure for party messages.
 type PartyEnvelope struct {
 	Type    string
 	From    string
@@ -71,11 +86,13 @@ type PartyEnvelope struct {
 	Data    []byte
 }
 
+// Party announcement message.
 type PartyAnnounce struct {
 	PeerId  string
 	PartyId string
 }
 
+// Party chat message.
 type PartyChat struct {
 	PeerId  string
 	PartyId string
@@ -83,12 +100,14 @@ type PartyChat struct {
 	Time    time.Time
 }
 
+// Party disconnect message.
 type PartyDisconnect struct {
 	PeerId  string
 	PartyId string
 	Time    time.Time
 }
 
+// Party message for advertising packs.
 type PartyAdvertisement struct {
 	PeerId  string
 	PartyId string
@@ -97,6 +116,7 @@ type PartyAdvertisement struct {
 	Pack    Pack
 }
 
+// Party request for a file from a pack.
 type PartyRequest struct {
 	PeerId   string
 	PackHash string
@@ -106,6 +126,7 @@ type PartyRequest struct {
 	PartyId  string
 }
 
+// Fulfillment of a party request (i.e. a single block).
 type PartyFulfillment struct {
 	PeerId   string
 	PackHash string
@@ -114,15 +135,18 @@ type PartyFulfillment struct {
 	Block    Block
 }
 
+// Control structure for rate limiting requests.
 type Since struct {
 	Received time.Time
 	Reported time.Time
 }
 
+// Mod that behaves nice for negatives.
 func modFloor(i, m int) int {
 	return ((i % m) + m) % m
 }
 
+// Finds the IDs surrounding self ID in party min list.
 func (party *PartyLine) getNeighbors() map[string]bool {
 	sortedIds := make([]string, 0, party.MinList.Len())
 	party.MinList.Mutex.Lock()
@@ -158,6 +182,7 @@ func (party *PartyLine) getNeighbors() map[string]bool {
 	return neighbors
 }
 
+// Invite a peer to the party.
 func (party *PartyLine) SendInvite(min *MinPeer) {
 	env := Envelope{
 		Type: "invite",
@@ -196,6 +221,7 @@ func (party *PartyLine) SendInvite(min *MinPeer) {
 	party.WhiteBox.setStatus("invite sent")
 }
 
+// Announce self to a newly joined party.
 func (party *PartyLine) SendAnnounce() {
 	env := Envelope{
 		Type: "party",
@@ -245,6 +271,7 @@ func (party *PartyLine) SendAnnounce() {
 	}
 }
 
+// Forward a message along to neighbors.
 func (party *PartyLine) sendToNeighbors(
 	msgType string, signedPartyData []byte) {
 	env := Envelope{
@@ -282,6 +309,7 @@ func (party *PartyLine) sendToNeighbors(
 	}
 }
 
+// Send a party chat.
 func (party *PartyLine) SendChat(message string) {
 	partyChat := PartyChat{
 		PeerId:  party.WhiteBox.PeerSelf.Id(),
@@ -301,6 +329,7 @@ func (party *PartyLine) SendChat(message string) {
 	party.sendToNeighbors("chat", signedPartyChat)
 }
 
+// Let party peers know when you d/c.
 func (party *PartyLine) SendDisconnect() {
 	partyDisconnect := PartyDisconnect{
 		PeerId:  party.WhiteBox.PeerSelf.Id(),
@@ -320,6 +349,7 @@ func (party *PartyLine) SendDisconnect() {
 	party.sendToNeighbors("disconnect", signedPartyDisconnect)
 }
 
+// Advertise a pack to the party.
 func (party *PartyLine) SendAdvertisement(packSha256 string, pack *Pack) {
 	partyAdvertisement := PartyAdvertisement{
 		PeerId:  party.WhiteBox.PeerSelf.Id(),
@@ -340,6 +370,7 @@ func (party *PartyLine) SendAdvertisement(packSha256 string, pack *Pack) {
 	party.sendToNeighbors("ad", signedPartyAdvertisement)
 }
 
+// Process an advertisement.
 func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
 	signedPartyAdvertisement := partyEnv.Data
 	jsonPartyAdvertisement := signedPartyAdvertisement[sign.SignatureSize:]
@@ -417,6 +448,7 @@ func (party *PartyLine) ProcessAdvertisement(partyEnv *PartyEnvelope) {
 	}
 }
 
+// Process a party chat.
 func (party *PartyLine) ProcessChat(partyEnv *PartyEnvelope) {
 	signedPartyChat := partyEnv.Data
 	jsonPartyChat := signedPartyChat[sign.SignatureSize:]
@@ -464,6 +496,7 @@ func (party *PartyLine) ProcessChat(partyEnv *PartyEnvelope) {
 	}
 }
 
+// Process a peer's disconnect
 func (party *PartyLine) ProcessDisconnect(partyEnv *PartyEnvelope) {
 	signedPartyDisconnect := partyEnv.Data
 	jsonPartyDisconnect := signedPartyDisconnect[sign.SignatureSize:]
@@ -510,6 +543,7 @@ func (party *PartyLine) ProcessDisconnect(partyEnv *PartyEnvelope) {
 	}
 }
 
+// Process a peer's annoucnement.
 func (party *PartyLine) ProcessAnnounce(partyEnv *PartyEnvelope) {
 	signedPartyAnnounce := partyEnv.Data
 	jsonPartyAnnounce := signedPartyAnnounce[sign.SignatureSize:]
@@ -548,6 +582,7 @@ func (party *PartyLine) ProcessAnnounce(partyEnv *PartyEnvelope) {
 	}
 }
 
+// Entry point for party messages.
 func (wb *WhiteBox) processParty(env *Envelope) {
 	min, err := wb.IdToMin(env.From)
 	if err != nil {
@@ -603,6 +638,7 @@ func (wb *WhiteBox) processParty(env *Envelope) {
 	}
 }
 
+// Process a received invite.
 func (wb *WhiteBox) processInvite(env *Envelope) {
 	min, err := wb.IdToMin(env.From)
 	if err != nil {
@@ -656,6 +692,7 @@ func (wb *WhiteBox) processInvite(env *Envelope) {
 	party.WhiteBox.setStatus(fmt.Sprintf("invite received for %s", party.Id))
 }
 
+// Accept an invite.
 func (wb *WhiteBox) AcceptInvite(partyId string) {
 	wb.PendingInvites.Mutex.Lock()
 	party := wb.PendingInvites.Map[partyId]
@@ -684,6 +721,7 @@ func (wb *WhiteBox) AcceptInvite(partyId string) {
 	party.WhiteBox.setStatus(fmt.Sprintf("accepted invite %s", party.Id))
 }
 
+// Advertise own packs.
 func (party *PartyLine) AdvertisePacks() {
 	party.PacksLock.Lock()
 	defer party.PacksLock.Unlock()
@@ -696,12 +734,15 @@ func (party *PartyLine) AdvertisePacks() {
 	}
 }
 
+// Delete own packs.
+// TODO: bug? deletes all packs on rescan...
 func (party *PartyLine) ClearPacks() {
 	party.PacksLock.Lock()
 	defer party.PacksLock.Unlock()
 	party.Packs = make(map[string]LockingPack)
 }
 
+// Start download of an available pack.
 func (party *PartyLine) StartPack(packHash string) {
 	party.PacksLock.Lock()
 	lockingPack := party.Packs[packHash]
@@ -762,6 +803,7 @@ func (party *PartyLine) StartPack(packHash string) {
 	pack.State = ACTIVE
 }
 
+// Process a file request from another peer.
 func (party *PartyLine) ProcessRequest(partyEnv *PartyEnvelope) {
 	signedPartyRequest := partyEnv.Data
 	jsonPartyRequest := signedPartyRequest[sign.SignatureSize:]
@@ -838,6 +880,7 @@ func (party *PartyLine) ProcessRequest(partyEnv *PartyEnvelope) {
 	party.WhiteBox.RequestChan <- partyRequest
 }
 
+// Request a file from the party.
 func (party *PartyLine) SendRequest(packHash string, file *PackFileInfo) {
 	partyRequest := PartyRequest{
 		PeerId:   party.WhiteBox.PeerSelf.Id(),
@@ -861,6 +904,7 @@ func (party *PartyLine) SendRequest(packHash string, file *PackFileInfo) {
 	party.sendToNeighbors("request", signedPartyRequest)
 }
 
+// Send out requests for all files being downloaded.
 func (party *PartyLine) SendRequests(packHash string, pack *Pack) {
 	complete := true
 	pack.FileLock.Lock()
@@ -879,6 +923,7 @@ func (party *PartyLine) SendRequests(packHash string, pack *Pack) {
 	}
 }
 
+// Send a fulfillment for a request.
 func (party *PartyLine) SendFulfillment(request *PartyRequest, block *Block) {
 	env := Envelope{
 		Type: "party",
@@ -934,6 +979,7 @@ func (party *PartyLine) SendFulfillment(request *PartyRequest, block *Block) {
 	party.WhiteBox.route(&env)
 }
 
+// Process a fulfillment for a block.
 func (party *PartyLine) ProcessFulfillment(partyEnv *PartyEnvelope) {
 	log.Println("(dbg) got fulfillment")
 	signedPartyFulfillment := partyEnv.Data
@@ -1055,6 +1101,7 @@ func (party *PartyLine) ProcessFulfillment(partyEnv *PartyEnvelope) {
 	party.WhiteBox.VerifiedBlockChan <- verifiedBlock
 }
 
+// Randomly select a block from the blocks that a peer needs.
 func (party *PartyLine) chooseBlock(request *PartyRequest) *Block {
 	// get blocks that request can verify
 	nextBlocks := make([]uint64, len(request.Coverage))
@@ -1167,6 +1214,7 @@ func (party *PartyLine) chooseBlock(request *PartyRequest) *Block {
 	return block
 }
 
+// Request files once every 5 seconds.
 func (wb *WhiteBox) FileRequester() {
 	for {
 		wb.Parties.Mutex.Lock()
@@ -1188,6 +1236,8 @@ func (wb *WhiteBox) FileRequester() {
 	}
 }
 
+// Fulfill file requests.
+// TODO: Poorly named function...
 func (wb *WhiteBox) RequestSender() {
 	for {
 		request := <-wb.RequestChan
@@ -1239,6 +1289,7 @@ func (wb *WhiteBox) RequestSender() {
 	}
 }
 
+// Check if a coverage has a specific block index.
 func haveBlock(verifiedBlock *VerifiedBlock) bool {
 	block := verifiedBlock.Block
 	majorIdx := block.Index / 64
@@ -1247,6 +1298,7 @@ func haveBlock(verifiedBlock *VerifiedBlock) bool {
 	return ((packFileInfo.Coverage[majorIdx] >> minorIdx) & 1) == 1
 }
 
+// Mark a block as written in coverage.
 func setBlockWritten(verifiedBlock *VerifiedBlock) {
 	block := verifiedBlock.Block
 	packFileInfo := verifiedBlock.PackFileInfo
@@ -1264,6 +1316,7 @@ func setBlockWritten(verifiedBlock *VerifiedBlock) {
 	packFileInfo.BlockLookup[block.Index] = verifiedBlock.Hash
 }
 
+// Write verified blocks to disk.
 func (wb *WhiteBox) VerifiedBlockWriter() {
 	for {
 		verifiedBlock := <-wb.VerifiedBlockChan
@@ -1314,6 +1367,7 @@ func (wb *WhiteBox) VerifiedBlockWriter() {
 	}
 }
 
+// Write a dummy file to disk.
 func (wb *WhiteBox) writeZeroFile(name string, size int64) {
 	wb.setStatus("writing empty file for " + name)
 
@@ -1367,6 +1421,7 @@ func (wb *WhiteBox) writeZeroFile(name string, size int64) {
 	wb.setStatus("empty file written for " + name)
 }
 
+// Advertise packs.
 func (wb *WhiteBox) advertiseAll() {
 	wb.Parties.Mutex.Lock()
 	for _, party := range wb.Parties.Map {
@@ -1375,6 +1430,7 @@ func (wb *WhiteBox) advertiseAll() {
 	wb.Parties.Mutex.Unlock()
 }
 
+// Disconnect from all parties (application exit).
 func (wb *WhiteBox) DisconnectParties() {
 	wb.Parties.Mutex.Lock()
 	for _, party := range wb.Parties.Map {
@@ -1383,6 +1439,7 @@ func (wb *WhiteBox) DisconnectParties() {
 	wb.Parties.Mutex.Unlock()
 }
 
+// Get the minimum of two ints.
 func minimum(a, b int) int {
 	if a < b {
 		return a
@@ -1390,6 +1447,7 @@ func minimum(a, b int) int {
 	return b
 }
 
+// Start a new party.
 func (wb *WhiteBox) PartyStart(name string) string {
 	idBytes := make([]byte, 16)
 	rand.Read(idBytes)
@@ -1424,6 +1482,7 @@ func (wb *WhiteBox) PartyStart(name string) string {
 	return party.Id
 }
 
+// Advertise packs continuously.
 func (wb *WhiteBox) Advertise() {
 	for {
 		wb.advertiseAll()
