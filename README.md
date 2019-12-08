@@ -64,6 +64,12 @@ this is probably wildly out of date...
     we'll miss you, but it was fun while you were 
 ```
 
+## Source Map
+
+`white-box` - Main functionality / lib code.
+
+`beige-box` - Test stuff.
+
 ## FAQQIES
 
 **Why should I not trust Main Line?**

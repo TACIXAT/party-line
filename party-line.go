@@ -37,7 +37,6 @@ TODO:
 	increase block size
 
 	make decent public interface (locking and shit)
-	bs shortener
 */
 
 var chatChan chan string
